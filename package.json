@@ -1,0 +1,28 @@
+{
+  "name": "oidc-test",
+  "version": "1.6.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "release": "NEW_VERSION=$(npm version minor) && ncc build index.js --license licenses.txt && git commit -am \"$NEW_VERSION\" && git push --follow-tags"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atlassian-labs/oidc-test.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/atlassian-labs/oidc-test/issues"
+  },
+  "homepage": "https://github.com/atlassian-labs/oidc-test#readme",
+  "dependencies": {
+    "@actions/core": "^1.6.0",
+    "@actions/http-client": "^1.0.11"
+  },
+  "devDependencies": {
+    "jest": "^27.5.1"
+  }
+}
