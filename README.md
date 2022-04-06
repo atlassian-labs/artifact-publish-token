@@ -34,7 +34,7 @@ jobs:
         # ...
         - name: Get Artifact Publish Token
           id: publish-token
-          uses: atlassian-labs/artifact-publish-token@v1.0
+          uses: atlassian-labs/artifact-publish-token@v1.0.0
           with:
               output-mode: maven
           # ... publish your artifact
