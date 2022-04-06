@@ -45,11 +45,14 @@ jobs:
 
 ## Development
 
-### Testsing
+### Testing
 
-`npm run test` will run units tests
+`npm run test` will run the units tests
 
 ### Release Changes
 
 Commit all your changes and run the following command to bump the version number and publish a new version
-`npm run release`
+
+```shell
+npm run release
+```
