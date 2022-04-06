@@ -1,0 +1,56 @@
+name: Maven publishing test
+on:
+  push:
+    branches:
+      - release
+defaults:
+  run:
+    working-directory: maven
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+
+      - name: "Checkout sources"
+        uses: actions/checkout@v2
+
+      - name: "Setup Java"
+        uses: actions/setup-java@v1
+        with:
+          java-version: 8
+
+      - name: "Build"
+        run: chmod 755 mvnw && ./mvnw install
+
+      - name: Install gpg secret key
+        run: |
+          cat <(echo -e "${{ secrets.SIGNING_KEY }}") | gpg --batch --import
+          gpg --list-secret-keys --keyid-format LONG
+
+      - name: Set up Git user
+        run: |
+          git config --global user.email ${{ secrets.GH_EMAIL }}
+          git config --global user.name ${{ secrets.GH_USERNAME }}
+
+      - name: Get publish token
+        id: publish-token
+        if: github.ref == 'refs/heads/release'
+        uses: atlassian-labs/oidc-test@v1.3.0
+        with:
+          output-mode: maven
+
+      # Publishes to Artifactory only on push to the "release" branch.
+      - name: "Publish"
+        if: github.ref == 'refs/heads/release'
+        run: |
+          chmod 755 mvnw
+          export GPG_TTY=$(tty)
+          ./mvnw -Dusername=${{ secrets.GH_USERNAME }} -Dpassword=${{ secrets.GH_ACCESS_TOKEN }} release:prepare
+          ./mvnw -Darguments="-Dgpg.passphrase=${{ secrets.SIGNING_PASSWORD }}" release:perform -Pdeploy
+
