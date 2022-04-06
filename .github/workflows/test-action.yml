@@ -31,7 +31,7 @@ jobs:
 
       - name: Get publish token
         id: publish-token
-        uses: atlassian-labs/oidc-test@v1.0.0
+        uses: atlassian-labs/oidc-test@v1.2.0
         with:
           output-mode: maven
       - name: Check maven settings
