@@ -14,7 +14,7 @@ async function checkDomain() {
 }
 
 async function retrievePublishToken(idToken) {
-    await checkDomain();
+    // await checkDomain();
     let http_client = new http.HttpClient('github-action', [new auth.BearerCredentialHandler(idToken)]);
     let response = await http_client.postJson(tokenServer, null);
     if (response.statusCode != 200) {

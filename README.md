@@ -41,3 +41,15 @@ jobs:
       - name: Publish artifact
         run: mvn release:perform
 ```
+
+
+## Development
+
+### Testsing
+
+`npm run test` will run units tests
+
+### Release Changes
+
+Commit all your changes and run the following command to bump the version number and publish a new version
+`npm run release`
