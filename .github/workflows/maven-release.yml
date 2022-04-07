@@ -28,15 +28,15 @@ jobs:
       - name: "Build"
         run: chmod 755 mvnw && ./mvnw install
 
-      - name: Install gpg secret key
-        run: |
-          cat <(echo -e "${{ secrets.SIGNING_KEY }}") | gpg --batch --import
-          gpg --list-secret-keys --keyid-format LONG
+      # - name: Install gpg secret key
+      #   run: |
+      #     cat <(echo -e "${{ secrets.SIGNING_KEY }}") | gpg --batch --import
+      #     gpg --list-secret-keys --keyid-format LONG
 
-      - name: Set up Git user
-        run: |
-          git config --global user.email ${{ secrets.GH_EMAIL }}
-          git config --global user.name ${{ secrets.GH_USERNAME }}
+      # - name: Set up Git user
+      #   run: |
+      #     git config --global user.email ${{ secrets.GH_EMAIL }}
+      #     git config --global user.name ${{ secrets.GH_USERNAME }}
 
       - name: Get publish token
         id: publish-token
