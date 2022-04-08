@@ -7,9 +7,13 @@ This action generates a temporary authentication token to publish artifacts to `
 ### `output-mode`
 
 The preferred output mode of the publish token. It supports the following values:
+
 * **maven**: Creates the maven settings file (~/.m2/settings.xml) with the credentials for the repository `maven-atlassian-com`
+
 * **gradle**: Creates the gradle global properties file (~/.gradle/gradle.properties) including the properties:  `ARTIFACTORY_USERNAME` and `ARTIFACTORY_API_KEY` populated with the temporary credentials
+
 * **environment**: Exports credentials as environment variables: `ARTIFACT_USERNAME` and `ARTIFACT_API_TOKEN`
+
 * **output**: Default option if not provided, populates the credentials as step output variables: `artifactUsername` and `artifactApiToken`
 
 ## Outputs

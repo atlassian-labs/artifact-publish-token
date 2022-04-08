@@ -5,9 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "release": "NEW_VERSION=$(npm version minor) && ncc build index.js --license licenses.txt && git commit -am \"$NEW_VERSION\" && git push --follow-tags",
-
-    "patch": "NEW_VERSION=$(npm version patch) && ncc build index.js --license licenses.txt && git commit -am \"$NEW_VERSION\" && git push --follow-tags"
+    "build": "ncc build index.js --license licenses.txt",
+    "release": "./bin/do-release.sh"
   },
   "repository": {
     "type": "git",
@@ -25,6 +24,7 @@
     "@actions/http-client": "^1.0.11"
   },
   "devDependencies": {
+    "@vercel/ncc": "^0.33.4",
     "jest": "^27.5.1"
   }
 }
