@@ -31,27 +31,8 @@ jobs:
 
       - name: Get publish token
         id: publish-token
-        uses: atlassian-labs/oidc-test@v1.2.0
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
         with:
           output-mode: maven
       - name: Check maven settings
         run: ls -ltr ~/
-
-      # - name: Install OIDC Client
-      #   run: npm install @actions/core@1.6.0 @actions/http-client
-      # - name: Get Id Token
-      #   uses: actions/github-script@v4
-      #   id: getIdToken
-      #   with:
-      #     script: |
-      #       const someCore = require('@actions/core')
-      #       let id_token = await someCore.getIDToken()
-      #       core.setOutput('id_token', id_token)
-      # - name: Echo Id Token
-      #   run: |
-      #     echo "Id Token ${{ steps.getIdToken.outputs.id_token }}"
-      #     curl -XPOST "https://artifactory-oidc.services.atlassian.com/oidc/token?provider=github" -H"Authorization: Bearer ${{ steps.getIdToken.outputs.id_token }}"
-
-
-
-

@@ -1,23 +1,25 @@
 {
-  "name": "oidc-test",
-  "version": "1.3.0",
+  "name": "artifact-publish-token",
+  "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "release": "NEW_VERSION=$(npm version minor) && ncc build index.js --license licenses.txt && git commit -am \"$NEW_VERSION\" && git push --follow-tags"
+    "release": "NEW_VERSION=$(npm version minor) && ncc build index.js --license licenses.txt && git commit -am \"$NEW_VERSION\" && git push --follow-tags",
+
+    "patch": "NEW_VERSION=$(npm version patch) && ncc build index.js --license licenses.txt && git commit -am \"$NEW_VERSION\" && git push --follow-tags"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/atlassian-labs/oidc-test.git"
+    "url": "git+https://github.com/atlassian-labs/artifact-publish-token.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/atlassian-labs/oidc-test/issues"
+    "url": "https://github.com/atlassian-labs/artifact-publish-token/issues"
   },
-  "homepage": "https://github.com/atlassian-labs/oidc-test#readme",
+  "homepage": "https://github.com/atlassian-labs/artifact-publish-token#readme",
   "dependencies": {
     "@actions/core": "^1.6.0",
     "@actions/http-client": "^1.0.11"
