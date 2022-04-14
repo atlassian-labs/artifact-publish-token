@@ -33,6 +33,6 @@ jobs:
         id: publish-token
         uses: atlassian-labs/artifact-publish-token@1.0.1
         with:
-          output-mode: maven
+          output-modes: maven
       - name: Check maven settings
         run: ls -ltr ~/

@@ -4,9 +4,9 @@ This action generates a temporary authentication token to publish artifacts to `
 
 ## Inputs
 
-### `output-mode`
+### `output-modes`
 
-The preferred output mode of the publish token. It supports the following values:
+The preferred output modes of the publish token. It supports the following values:
 
 * **maven**: Creates the maven settings file (~/.m2/settings.xml) with the credentials for the repository `maven-atlassian-com`
 
@@ -40,7 +40,7 @@ jobs:
           id: publish-token
           uses: atlassian-labs/artifact-publish-token@v1.0.0
           with:
-              output-mode: maven
+              output-modes: maven
           # ... publish your artifact
       - name: Publish artifact
         run: mvn release:perform

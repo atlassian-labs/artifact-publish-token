@@ -9,7 +9,7 @@ const maven = "maven",
     gradle = "gradle",
     output = "output",
     environment = "environment";
-const supportedTypes = [maven, gradle, output, environment];
+const supportedModes = [maven, gradle, output, environment];
 
 async function retrievePublishToken(idToken) {
     let http_client = new http.HttpClient('github-action', [new auth.BearerCredentialHandler(idToken)]);
@@ -55,10 +55,10 @@ ARTIFACTORY_API_KEY=${token.token}
 
 (async function() {
     try {
-        let output_modes = core.getInput('output-mode').split('\s*,\s*');
+        let output_modes = core.getInput('output-modes').split('\s*,\s*');
         output_modes.forEach((e) => {
-            if (e && !supportedTypes.includes(e)) {
-                throw new Error(`Invalid 'output-mode' value! Allowed values ${supportedTypes}`);
+            if (e && !supportedModes.includes(e)) {
+                throw new Error(`Invalid 'output-mode' value! Allowed values ${supportedModes}`);
             }
         });
         let id_token = await core.getIDToken();
