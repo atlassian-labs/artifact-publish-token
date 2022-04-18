@@ -55,26 +55,26 @@ ARTIFACTORY_API_KEY=${token.token}
 
 (async function() {
     try {
-        let output_modes = core.getInput('output-modes').split('\s*,\s*');
-        output_modes.forEach((e) => {
+        let outputModes = core.getInput('output-modes').split('\s*,\s*');
+        outputModes.forEach((e) => {
             if (e && !supportedModes.includes(e)) {
                 throw new Error(`Invalid 'output-mode' value! Allowed values ${supportedModes}`);
             }
         });
-        let id_token = await core.getIDToken();
-        let token = await retrievePublishToken(id_token);
-        if (output_modes.includes(environment)) {
-            core.exportVariable('ARTIFACT_USERNAME', token.username);
-            core.exportVariable('ARTIFACT_API_TOKEN', token.token);
+        let idToken = await core.getIDToken();
+        let token = await retrievePublishToken(idToken);
+        if (outputModes.includes(environment)) {
+            core.exportVariable('ARTIFACTORY_USERNAME', token.username);
+            core.exportVariable('ARTIFACTORY_API_TOKEN', token.token);
         }
-        if (output_modes.includes(maven)) {
+        if (outputModes.includes(maven)) {
             await generateMavenSettings(os.homedir(), token);
         }
-        if (output_modes.includes(gradle)) {
+        if (outputModes.includes(gradle)) {
             await generateGradleProps(os.homedir(), token);
         }
-        core.setOutput('artifactUsername', token.username);
-        core.setOutput('artifactApiToken', token.token);
+        core.setOutput('artifactoryUsername', token.username);
+        core.setOutput('artifactoryApiToken', token.token);
     } catch (error) {
         core.setFailed(error.message);
     }
