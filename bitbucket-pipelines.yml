@@ -29,7 +29,7 @@ definitions:
           - source .artifactory/activate.sh
           - apt-get update && apt-get install -y git
           - npm run release
-          - git push git@github.com:atlassian-labs/artifact-publish-token.git HEAD:main
+          - git push git@github.com:atlassian-labs/artifact-publish-token.git HEAD:main --follow-tags
 pipelines:
   default:
     - parallel:
