@@ -46,6 +46,8 @@ jobs:
         run: mvn release:perform
 ```
 
+* The permissions are required in order to access GitHub OIDC Provider.
+
 
 ## Development
 

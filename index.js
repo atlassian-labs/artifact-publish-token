@@ -65,7 +65,7 @@ ARTIFACTORY_API_KEY=${token.token}
         let token = await retrievePublishToken(idToken);
         if (outputModes.includes(environment)) {
             core.exportVariable('ARTIFACTORY_USERNAME', token.username);
-            core.exportVariable('ARTIFACTORY_API_TOKEN', token.token);
+            core.exportVariable('ARTIFACTORY_API_KEY', token.token);
         }
         if (outputModes.includes(maven)) {
             await generateMavenSettings(os.homedir(), token);
@@ -74,7 +74,7 @@ ARTIFACTORY_API_KEY=${token.token}
             await generateGradleProps(os.homedir(), token);
         }
         core.setOutput('artifactoryUsername', token.username);
-        core.setOutput('artifactoryApiToken', token.token);
+        core.setOutput('artifactoryApiKey', token.token);
     } catch (error) {
         core.setFailed(error.message);
     }
