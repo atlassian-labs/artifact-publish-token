@@ -12,7 +12,7 @@ The preferred output modes of the publish token. It supports the following value
 
 * **gradle**: Creates the gradle global properties file (~/.gradle/gradle.properties) including the properties:  `ARTIFACTORY_USERNAME` and `ARTIFACTORY_API_KEY` populated with the temporary credentials
 
-* **environment**: Exports credentials as environment variables: `ARTIFACTORY_USERNAME` and `ARTIFACTORY_API_TOKEN`
+* **environment**: Exports credentials as environment variables: `ARTIFACTORY_USERNAME` and `ARTIFACTORY_API_KEY`
 
 * **output**: Default option if not provided, populates the credentials as step output variables: `artifactUsername` and `artifactApiToken`
 
