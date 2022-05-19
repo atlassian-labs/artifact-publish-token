@@ -28,6 +28,7 @@ definitions:
           - pipe: atlassian/artifactory-sidekick:v1
           - source .artifactory/activate.sh
           - apt-get update && apt-get install -y git
+          - npm install
           - npm run release
           - git push git@github.com:atlassian-labs/artifact-publish-token.git HEAD:main --follow-tags
 pipelines:
@@ -35,7 +36,6 @@ pipelines:
     - parallel:
         - step: *test
         - step: *build
-
   branches:
     master:
       - parallel:
