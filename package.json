@@ -1,0 +1,31 @@
+{
+  "name": "artifact-publish-token",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "build": "ncc build index.js --license licenses.txt",
+    "release": "./bin/do-release.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atlassian-labs/artifact-publish-token.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/atlassian-labs/artifact-publish-token/issues"
+  },
+  "homepage": "https://github.com/atlassian-labs/artifact-publish-token#readme",
+  "dependencies": {
+    "@actions/core": "^1.6.0",
+    "@actions/http-client": "^1.0.11",
+    "mustache": "^4.2.0"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.33.4",
+    "jest": "^27.5.1"
+  }
+}

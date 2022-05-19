@@ -1,0 +1,14 @@
+name: Artifact Publish Token
+description: Retrieves publish token for packages.atlassian.com
+inputs:
+  output-modes:
+    description: How to export the token. Any comma separated combination of {environment, output, maven, gradle}. Defaults to output
+    default: output
+outputs:
+  artifact-username:
+    description: Token username
+  artifact-token:
+    description: Token value
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
