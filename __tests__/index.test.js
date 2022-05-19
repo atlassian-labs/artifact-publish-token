@@ -20,16 +20,10 @@ test('can generate maven settins', async () => {
     });
 
     let data = await fs.readFile('/tmp/.m2/settings.xml', 'utf8');
-    expect(data).toMatch(
-        `<settings>
-<servers>
-<server>
-<id>maven-atlassian-com</id>
-<username>test-user</username>
-<password>token-123</password>
-</server>
-</servers>
-</settings>`);
+    expect(data).toEqual(
+        expect.stringContaining('<username>test-user</username>'),
+        expect.stringContaining('<password>token-123</password>')
+                        );
 });
 
 

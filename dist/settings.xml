@@ -1,0 +1,9 @@
+<settings>
+    <servers>
+        <server>
+            <id>maven-atlassian-com</id>
+            <username>{{username}}</username>
+            <password>{{token}}</password>
+        </server>
+    </servers>
+</settings>

@@ -4,6 +4,7 @@ const auth = require('@actions/http-client/auth');
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
+const mustache = require('mustache');
 const tokenServer = "https://artifactory-oidc.services.atlassian.com/oidc/token?provider=github";
 const maven = "maven",
     gradle = "gradle",
@@ -27,16 +28,13 @@ async function generateMavenSettings(dir, token) {
     await fs.mkdir(mavenDir, {
         recursive: true
     });
-    await fs.writeFile(mavenFile,
-        `<settings>
-<servers>
-<server>
-<id>maven-atlassian-com</id>
-<username>${token.username}</username>
-<password>${token.token}</password>
-</server>
-</servers>
-</settings>`);
+    const template = await fs.readFile(`${__dirname}/settings.xml`, 'utf-8');
+    const content = mustache.render(template, {
+        username: token.username,
+        token: token.token
+    });
+
+    await fs.writeFile(mavenFile, content);
 }
 
 async function generateGradleProps(dir, token) {
