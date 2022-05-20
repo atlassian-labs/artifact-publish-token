@@ -29,13 +29,10 @@ definitions:
           - pipe: atlassian/artifactory-sidekick:v1
           - source .artifactory/activate.sh
           - apt-get update && apt-get install -y git
-          # backup BBP's own ssh key that will be used later
-          - mv ${SSH_KEY_PATH}/id_rsa ${SSH_KEY_PATH}/id_rsa-bbp
-          - (echo ${SECART_BOT_SSH_KEY} | base64 --decode > ${SSH_KEY_PATH}/id_rsa)
+          - (mkdir -p ~/.ssh ; umask  077 ; echo ${SECART_BOT_SSH_KEY} | base64 --decode > ~/.ssh/id_rsa)
+          - echo -e "\nHost bitbucket\n\tHostName bitbucket.org\n\tIdentityFile ~/.ssh/id_rsa\n" >> ~/.ssh/config
           - npm install
           - npm run release
-          # restore the BBP's ssh to push to Github
-          - mv ${SSH_KEY_PATH}/id_rsa-bbp ${SSH_KEY_PATH}/id_rsa
           - git push git@github.com:atlassian-labs/artifact-publish-token.git HEAD:main --follow-tags
 pipelines:
   default:
