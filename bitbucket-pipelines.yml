@@ -30,7 +30,7 @@ definitions:
           - source .artifactory/activate.sh
           - apt-get update && apt-get install -y git
           - (mkdir -p ~/.ssh ; umask  077 ; echo ${SECART_BOT_SSH_KEY} | base64 --decode > ~/.ssh/id_rsa)
-          - echo -e "\nHost bitbucket\n\tHostName bitbucket.org\n\tIdentityFile ~/.ssh/id_rsa\n" >> ~/.ssh/config
+          - echo -e "\nHost bitbucket\n\tHostName bitbucket.org\n\tUser git\n\tIdentityFile ~/.ssh/id_rsa\n" >> ~/.ssh/config
           - npm install
           - npm run release
           - git push git@github.com:atlassian-labs/artifact-publish-token.git HEAD:main --follow-tags
