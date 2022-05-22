@@ -19,13 +19,6 @@ const maven = "maven",
 const supportedModes = [maven, gradle, output, environment];
 
 async function retrievePublishToken(idToken) {
-    console.log(`dir 2: ${__dirname}`);
-    let path=`${__dirname}/templates/settings.xml`;
-    console.log(`path is: ${path}`);
-    const template = await fs.readFile(path, 'utf-8');
-    console.log(`templates: ${template}`);
-    const content = mustache.render(template, {username:'testuser',token:'token123'});
-    console.log(`output: ${content}`);
     let http_client = new http.HttpClient('github-action', [new auth.BearerCredentialHandler(idToken)]);
     let response = await http_client.postJson(tokenServer, null);
     if (response.statusCode != 200) {
@@ -41,10 +34,13 @@ async function generateMavenSettings(dir, token) {
     await fs.mkdir(mavenDir, {
         recursive: true
     });
-    const template = await fs.readFile(`${__dirname}/templates/settings.xml`, 'utf-8');
-    const content = mustache.render(template, {username:token.username, token:token.token});
+    const template = await fs.readFile(__nccwpck_require__.ab + "settings.xml", 'utf-8');
+    const content = mustache.render(template, {
+        username: token.username,
+        token: token.token
+    });
 
-    await fs.writeFile(mavenFile,content);
+    await fs.writeFile(mavenFile, content);
 }
 
 async function generateGradleProps(dir, token) {
