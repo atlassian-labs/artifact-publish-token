@@ -73,6 +73,9 @@ ARTIFACTORY_API_KEY=${token.token}
         }
         core.setOutput('artifactoryUsername', token.username);
         core.setOutput('artifactoryApiKey', token.token);
+        //ensure the token is masked in logs
+        core.setSecret(token.username);
+        core.setSecret(token.token);
     } catch (error) {
         core.setFailed(error.message);
     }
