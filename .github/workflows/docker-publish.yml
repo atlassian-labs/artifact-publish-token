@@ -1,6 +1,5 @@
 # This is a basic workflow to help you get started with Actions
-
-name: Test Action
+name: Publish sample docker
 
 # Controls when the workflow will run
 on:
@@ -31,11 +30,13 @@ jobs:
 
       - name: Get publish token
         id: publish-token
-        uses: atlassian-labs/artifact-publish-token@v1.0.3
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
         with:
-          output-modes: maven,gradle,environment
-      - name: Verify tokens
+          output-modes: environment
+
+      - name: build & publish image
         run: |
-          cat ~/.m2/settings.xml
-          cat ~/.gradle/gradle.properties
-          echo "user: $ARTIFACTORY_USERNAME, token: $ARTIFACTORY_API_KEY"
+          image="com/atlassian/dummy/hello-apt:latest"
+          docker build examples/docker -t docker-public.packages.atlassian.com/$image
+          echo "${ARTIFACTORY_API_KEY}" | docker login docker-public.packages.atlassian.com -u "${ARTIFACTORY_USERNAME}" --password-stdin
+          docker push docker-public.packages.atlassian.com/$image
