@@ -59,10 +59,10 @@ ARTIFACTORY_API_KEY=${token.token}
 
 (async function() {
     try {
-        let outputModes = core.getInput('output-modes').split('\s*,\s*');
+        let outputModes = core.getInput('output-modes').split(/\s*,\s*/);
         outputModes.forEach((e) => {
             if (e && !supportedModes.includes(e)) {
-                throw new Error(`Invalid 'output-mode' value! Allowed values ${supportedModes}`);
+                throw new Error(`Invalid output mode '${e}'. Allowed values ${supportedModes}`);
             }
         });
         let idToken = await core.getIDToken();
