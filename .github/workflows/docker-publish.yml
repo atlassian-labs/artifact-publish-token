@@ -36,7 +36,7 @@ jobs:
 
       - name: build & publish image
         run: |
-          image="com/atlassian/dummy/hello-apt:latest"
+          image="com/atlassian/dummy/hello-apt:${GITHUB_RUN_ID}"
           docker build examples/docker -t docker-public.packages.atlassian.com/$image
           echo "${ARTIFACTORY_API_KEY}" | docker login docker-public.packages.atlassian.com -u "${ARTIFACTORY_USERNAME}" --password-stdin
           docker push docker-public.packages.atlassian.com/$image
