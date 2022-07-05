@@ -31,11 +31,15 @@ jobs:
 
       - name: Get publish token
         id: publish-token
-        uses: atlassian-labs/artifact-publish-token@v1.0.3
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
         with:
           output-modes: maven,gradle,environment
       - name: Verify tokens
         run: |
-          cat ~/.m2/settings.xml
-          cat ~/.gradle/gradle.properties
-          echo "user: $ARTIFACTORY_USERNAME, token: $ARTIFACTORY_API_KEY"
+          set -e
+          [[ ! -z $ARTIFACTORY_USERNAME ]] || echo "ARTIFACTORY_USERNAME is not set"
+          [[ ! -z $ARTIFACTORY_API_KEY ]] || echo "ARTIFACTORY_API_KEY is not net"
+          grep -q "$ARTIFACTORY_USERNAME" ~/.m2/settings.xml || echo "Maven settings missing username"
+          grep -q "$ARTIFACTORY_API_KEY"  ~/.m2/settings.xml || echo "Maven settings missing key"
+          grep -q "$ARTIFACTORY_USERNAME" ~/.gradle/gradle.properties || echo "Gradle settings missing username"
+          grep -q "$ARTIFACTORY_API_KEY ~/.gradle/gradle.properties || echo "Gradle settings missing key"
