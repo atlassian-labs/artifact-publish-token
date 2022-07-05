@@ -33,8 +33,10 @@ definitions:
           - mv ~/.ssh/config ~/.ssh/config-bak
           - (mkdir -p ~/.ssh ; umask  077 ; echo ${SECART_BOT_SSH_KEY} | base64 --decode > ~/.ssh/id_rsa)
           - npm install
+          - export CUR_VERSION=v1.0.1
           - npm run release
           - mv ~/.ssh/config-bak ~/.ssh/config
+          - ( git show -s --format=%D HEAD | grep $CUR_VERSION ) && git push -d git@github.com:atlassian-labs/artifact-publish-token.git $CUR_VERSION || echo true
           - git push git@github.com:atlassian-labs/artifact-publish-token.git HEAD:main --follow-tags
 pipelines:
   default:
