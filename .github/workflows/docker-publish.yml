@@ -30,7 +30,7 @@ jobs:
 
       - name: Get publish token
         id: publish-token
-        uses: atlassian-labs/artifact-publish-token@v1.0.3
+        uses: atlassian-labs/artifact-publish-token@v1.0.1
         with:
           output-modes: environment
 
