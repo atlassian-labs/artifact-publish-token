@@ -1,6 +1,6 @@
 const core = require('@actions/core');
 const http = require('@actions/http-client');
-const auth = require('@actions/http-client/auth');
+const auth = require('@actions/http-client/lib/auth');
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
