@@ -37,9 +37,9 @@ jobs:
       - name: Verify tokens
         run: |
           set -e
-          [[ ! -z $ARTIFACTORY_USERNAME ]] || echo "ARTIFACTORY_USERNAME is not set"
-          [[ ! -z $ARTIFACTORY_API_KEY ]] || echo "ARTIFACTORY_API_KEY is not net"
-          grep -q "$ARTIFACTORY_USERNAME" ~/.m2/settings.xml || echo "Maven settings missing username"
-          grep -q "$ARTIFACTORY_API_KEY"  ~/.m2/settings.xml || echo "Maven settings missing key"
-          grep -q "$ARTIFACTORY_USERNAME" ~/.gradle/gradle.properties || echo "Gradle settings missing username"
-          grep -q "$ARTIFACTORY_API_KEY ~/.gradle/gradle.properties || echo "Gradle settings missing key"
+          [[ ! -z $ARTIFACTORY_USERNAME ]] || (echo "ARTIFACTORY_USERNAME is not set" && exit 1)
+          [[ ! -z $ARTIFACTORY_API_KEY ]] || (echo "ARTIFACTORY_API_KEY is not set" && exit 1)
+          grep -q "$ARTIFACTORY_USERNAME" ~/.m2/settings.xml || (echo "Maven settings missing username" && exit 1)
+          grep -q "$ARTIFACTORY_API_KEY"  ~/.m2/settings.xml || (echo "Maven settings missing key" && exit 1)
+          grep -q "$ARTIFACTORY_USERNAME" ~/.gradle/gradle.properties || (echo "Gradle settings missing username" && exit 1)
+          grep -q "$ARTIFACTORY_API_KEY" ~/.gradle/gradle.properties || (echo "Gradle settings missing key" && exit 1)
