@@ -7,7 +7,6 @@ cp  settings.xml dist/
 git update-index --refresh
 git diff-index --quiet HEAD --  || {
     git commit -am '[skip ci] dist updated'
-    npm version patch
     # update current version reference
     git tag -fa $CUR_VERSION -m "Updated to latest version"
     git push -d origin $CUR_VERSION
