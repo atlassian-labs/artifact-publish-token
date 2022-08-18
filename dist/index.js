@@ -67,6 +67,9 @@ ARTIFACTORY_API_KEY=${token.token}
         });
         let idToken = await core.getIDToken();
         let token = await retrievePublishToken(idToken);
+        //ensure the token is masked in logs
+        core.setSecret(token.username);
+        core.setSecret(token.token);
         if (outputModes.includes(environment)) {
             core.exportVariable('ARTIFACTORY_USERNAME', token.username);
             core.exportVariable('ARTIFACTORY_API_KEY', token.token);
@@ -79,9 +82,6 @@ ARTIFACTORY_API_KEY=${token.token}
         }
         core.setOutput('artifactoryUsername', token.username);
         core.setOutput('artifactoryApiKey', token.token);
-        //ensure the token is masked in logs
-        core.setSecret(token.username);
-        core.setSecret(token.token);
     } catch (error) {
         core.setFailed(error.message);
     }
