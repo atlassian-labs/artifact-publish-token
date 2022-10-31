@@ -1,7 +1,7 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 932:
+/***/ 582:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 const core = __nccwpck_require__(186);
@@ -57,40 +57,39 @@ ARTIFACTORY_API_KEY=${token.token}
 `);
 }
 
-(async function() {
-    try {
-        let outputModes = core.getInput('output-modes').split(/\s*,\s*/);
-        outputModes.forEach((e) => {
-            if (e && !supportedModes.includes(e)) {
-                throw new Error(`Invalid output mode '${e}'. Allowed values ${supportedModes}`);
-            }
-        });
-        let idToken = await core.getIDToken();
-        let token = await retrievePublishToken(idToken);
-        //ensure the token is masked in logs
-        core.setSecret(token.username);
-        core.setSecret(token.token);
-        if (outputModes.includes(environment)) {
-            core.exportVariable('ARTIFACTORY_USERNAME', token.username);
-            core.exportVariable('ARTIFACTORY_API_KEY', token.token);
+async function doAction() {
+    let outputModes = core.getInput('output-modes').split(/\s*,\s*/);
+    outputModes.forEach((e) => {
+        if (e && !supportedModes.includes(e)) {
+            throw new Error(`Invalid output mode '${e}'. Allowed values ${supportedModes}`);
         }
-        if (outputModes.includes(maven)) {
-            await generateMavenSettings(os.homedir(), token);
-        }
-        if (outputModes.includes(gradle)) {
-            await generateGradleProps(os.homedir(), token);
-        }
-        core.setOutput('artifactoryUsername', token.username);
-        core.setOutput('artifactoryApiKey', token.token);
-    } catch (error) {
-        core.setFailed(error.message);
+    });
+    let idToken = await core.getIDToken();
+    let token = await retrievePublishToken(idToken);
+    //ensure the token is masked in logs
+    core.setSecret(token.username);
+    core.setSecret(token.token);
+    if (outputModes.includes(environment)) {
+        core.exportVariable('ARTIFACTORY_USERNAME', token.username);
+        core.exportVariable('ARTIFACTORY_API_KEY', token.token);
     }
-})();
+    if (outputModes.includes(maven)) {
+        await generateMavenSettings(os.homedir(), token);
+    }
+    if (outputModes.includes(gradle)) {
+        await generateGradleProps(os.homedir(), token);
+    }
+    core.setOutput('artifactoryUsername', token.username);
+    core.setOutput('artifactoryApiKey', token.token);
+
+}
+
 
 module.exports = {
     retrievePublishToken,
     generateMavenSettings,
-    generateGradleProps
+    generateGradleProps,
+    doAction
 };
 
 
@@ -3314,12 +3313,22 @@ module.exports = require("util");
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-/******/ 	
-/******/ 	// startup
-/******/ 	// Load entry module and return exports
-/******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __nccwpck_require__(932);
-/******/ 	module.exports = __webpack_exports__;
-/******/ 	
+var __webpack_exports__ = {};
+// This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
+(() => {
+const action = __nccwpck_require__(582);
+const core = __nccwpck_require__(186);
+
+(async function() {
+    try {
+        await action.doAction();
+    } catch (error) {
+        core.setFailed(error.message);
+    }
+})();
+
+})();
+
+module.exports = __webpack_exports__;
 /******/ })()
 ;
