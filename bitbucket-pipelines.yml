@@ -1,4 +1,4 @@
-image: "node:18-slim"
+image: "node:19-slim"
 definitions:
   steps:
     - step: &test
