@@ -31,7 +31,7 @@ definitions:
           - pipe: atlassian/artifactory-sidekick:v1
           - source .artifactory/activate.sh
           - apt-get update && apt-get install -y git
-          - export BB_REPO=git@github.com:atlassian-labs/artifact-publish-token.git GITHUB_REPO=git@github.com:atlassian-labs/artifact-publish-token.git
+          - export BB_REPO=git@bitbucket.org:atlassian/artifact-publish-token.git GITHUB_REPO=git@github.com:atlassian-labs/artifact-publish-token.git
           - git remote set-url origin $BB_REPO
           - mv ~/.ssh/config ~/.ssh/config-bak
           - (mkdir -p ~/.ssh ; umask  077 ; echo ${SECART_BOT_SSH_KEY} | base64 --decode > ~/.ssh/id_rsa)

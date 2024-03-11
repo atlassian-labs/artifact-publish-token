@@ -2,8 +2,7 @@
 
 set -x
 
-push_revision () {
-    git commit -am '[skip ci] dist updated'
+push_revision() {
     # update current version reference
     git tag -fa $CUR_VERSION -m "Updated to latest version"
     git push -d origin $CUR_VERSION
@@ -17,10 +16,11 @@ git update-index --refresh
 
 git diff-index --quiet HEAD --  || {
     echo "release bundle changed"
-    push_revision
+    git commit -am '[skip ci] dist updated'
+    update_revision
 }
 
 [[ $(git rev-list --count "${CUR_VERSION}".. -- action.yml) -eq 0 ]] || {
     echo "action descriptor changed..."
-    push_revision
+    update_revision
 }
