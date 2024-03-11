@@ -10,5 +10,5 @@ git diff-index --quiet HEAD --  || {
     # update current version reference
     git tag -fa $CUR_VERSION -m "Updated to latest version"
     git push -d origin $CUR_VERSION
-    git push --follow-tags
+    git push --follow-tags $DRY_RUN -v
 }
