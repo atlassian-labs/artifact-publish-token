@@ -17,10 +17,10 @@ git update-index --refresh
 git diff-index --quiet HEAD --  || {
     echo "release bundle changed"
     git commit -am '[skip ci] dist updated'
-    update_revision
+    push_revision
 }
 
 [[ $(git rev-list --count "${CUR_VERSION}".. -- action.yml) -eq 0 ]] || {
     echo "action descriptor changed..."
-    update_revision
+    push_revision
 }
