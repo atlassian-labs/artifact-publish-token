@@ -1,22 +1,30 @@
 image: "node:22-slim"
 definitions:
+  artifactory-pipe: &artifactory-pipe
+    pipe: atlassian/artifactory-sidekick:v1
+  artifactory-init: &artifactory-init source .artifactory/activate.sh
+  sonar-pipe: &sonar-pipe
+    - pipe: docker://docker.atl-paas.net/sox/mobuild/sonar-pipe:stable
+      variables:
+        DEFAULT_BRANCH: "main"
   steps:
     - step: &test
         name: Test
         caches:
           - node
         script:
-          - pipe: atlassian/artifactory-sidekick:v1
-          - source .artifactory/activate.sh
+          - *artifactory-pipe
+          - *artifactory-init
           - npm install
           - npm run test
+          - *sonar-pipe
     - step: &build
         name: Build
         caches:
           - node
         script:
-          - pipe: atlassian/artifactory-sidekick:v1
-          - source .artifactory/activate.sh
+          - *artifactory-pipe
+          - *artifactory-init
           - npm install
           - npm run build
 
@@ -28,8 +36,8 @@ definitions:
         clone:
           depth: full
         script:
-          - pipe: atlassian/artifactory-sidekick:v1
-          - source .artifactory/activate.sh
+          - *artifactory-pipe
+          - *artifactory-init
           - apt-get update && apt-get install -y git
           - export BB_REPO=git@bitbucket.org:atlassian/artifact-publish-token.git GITHUB_REPO=git@github.com:atlassian-labs/artifact-publish-token.git
           - git remote set-url origin $BB_REPO
