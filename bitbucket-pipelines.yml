@@ -17,7 +17,7 @@ definitions:
           - *artifactory-init
           - npm install
           - npm run test
-          - *sonar-pipe
+          - <<: *sonar-pipe
     - step: &build
         name: Build
         caches:
