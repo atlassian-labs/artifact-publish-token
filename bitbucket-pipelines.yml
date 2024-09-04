@@ -16,7 +16,7 @@ definitions:
           - *artifactory-pipe
           - *artifactory-init
           - npm install
-          - npm run ci:test
+          - npm run test -- --coverage
           - <<: *sonar-pipe
     - step: &build
         name: Build
