@@ -22,13 +22,13 @@ async function retrievePublishToken(idToken) {
     return response.result;
 }
 
-async function generateNpmConfig(dir, token) {
+async function copyNpmConfig(dir, token) {
     const base64Token = Buffer.from(`${token.token}`).toString('base64');
 
     core.exportVariable('ARTIFACTORY_USERNAME', token.username);
     core.exportVariable('ARTIFACTORY_PASSWORD_BASE64', base64Token);
 
-    await fs.copyFile(`${dir}/.npmrc-public`, `./.npmrc-public`);
+    await fs.copyFile(`${__dirname}/.npmrc-public`, path.join(dir, './.npmrc-public'));
 }
 
 async function generateMavenSettings(dir, token) {
@@ -84,7 +84,7 @@ async function doAction() {
         await generateGradleProps(os.homedir(), token);
     }
     if (outputModes.includes(npm)) {
-        await generateNpmConfig(os.homedir(), token);
+        await copyNpmConfig(process.env.GITHUB_WORKSPACE, token);
     }
     core.setOutput('artifactoryUsername', token.username);
     core.setOutput('artifactoryApiKey', token.token);
@@ -96,6 +96,6 @@ module.exports = {
     retrievePublishToken,
     generateMavenSettings,
     generateGradleProps,
-    generateNpmConfig,
+    copyNpmConfig,
     doAction
 };

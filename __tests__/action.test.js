@@ -47,10 +47,6 @@ jest.mock('@actions/core', () => ({
 }));
 test('can generate npm config', async () => {
     // Arrange
-    const base64Password = Buffer.from('token-123').toString('base64');
-    process.env.ARTIFACTORY_USERNAME = 'test-user';
-    process.env.ARTIFACTORY_PASSWORD_BASE64 = base64Password;
-
     const dir = '/tmp';
     const token = {
         username: 'test-user',
@@ -58,13 +54,14 @@ test('can generate npm config', async () => {
     };
 
     // Act
-    await core.generateNpmConfig(dir, token);
+    await core.copyNpmConfig(dir, token);
 
     // Assert
     const data = await fs.readFile(`${dir}/.npmrc-public`, 'utf8');
+    // check file exists
     expect(data).toMatch(
-        `//packages.atlassian.com/api/npm/npm-public/:_password=${base64Password}
-//packages.atlassian.com/api/npm/npm-public/:username=test-user
+        `//packages.atlassian.com/api/npm/npm-public/:_password=\${ARTIFACTORY_PASSWORD_BASE64}
+//packages.atlassian.com/api/npm/npm-public/:username=\${ARTIFACTORY_USERNAME}
 //packages.atlassian.com/api/npm/npm-public/:email=build-team@atlassian.com
 //packages.atlassian.com/api/npm/npm-public/:always-auth=true`
     );
