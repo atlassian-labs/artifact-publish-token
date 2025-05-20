@@ -24,9 +24,8 @@ async function retrievePublishToken(idToken) {
 
 async function generateNpmConfig(dir, token) {
     // generate npm config file
-    const npmDir = path.join(dir, '.m2');
-    const npmFile = path.join(npmDir, '.npmrc-public');
-    await fs.mkdir(npmDir, {
+    const npmFile = path.join(dir, '.npmrc-public');
+    await fs.mkdir(dir, {
         recursive: true
     });
     const template = await fs.readFile(`${__dirname}/.npmrc-public`, 'utf-8');
