@@ -47,7 +47,7 @@ test('can generate npm config', async () => {
         token: 'token-123'
     });
 
-    let data = await fs.readFile('/tmp/.m2/.npmrc-public', 'utf8');
+    let data = await fs.readFile('/tmp/.npmrc-public', 'utf8');
     const base64Password = Buffer.from(`token-123`).toString('base64');
     expect(data).toMatch(
         `//packages.atlassian.com/api/npm/npm-public/:_password=${base64Password}
