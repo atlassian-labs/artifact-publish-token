@@ -42,16 +42,26 @@ ARTIFACTORY_API_KEY=token-123
 });
 
 test('can generate npm config', async () => {
-    await core.generateNpmConfig('/tmp', {
+    // Arrange
+    const base64Password = Buffer.from('token-123').toString('base64');
+    process.env.ARTIFACTORY_USERNAME = 'test-user';
+    process.env.ARTIFACTORY_PASSWORD_BASE64 = base64Password;
+
+    const dir = '/tmp';
+    const token = {
         username: 'test-user',
         token: 'token-123'
-    });
+    };
 
-    let data = await fs.readFile('/tmp/.npmrc-public', 'utf8');
-    const base64Password = Buffer.from(`token-123`).toString('base64');
+    // Act
+    await core.generateNpmConfig(dir, token);
+
+    // Assert
+    const data = await fs.readFile(`${dir}/.npmrc-public`, 'utf8');
     expect(data).toMatch(
         `//packages.atlassian.com/api/npm/npm-public/:_password=${base64Password}
 //packages.atlassian.com/api/npm/npm-public/:username=test-user
 //packages.atlassian.com/api/npm/npm-public/:email=build-team@atlassian.com
-//packages.atlassian.com/api/npm/npm-public/:always-auth=true`);
+//packages.atlassian.com/api/npm/npm-public/:always-auth=true`
+    );
 });

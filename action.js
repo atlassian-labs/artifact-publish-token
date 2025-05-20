@@ -30,9 +30,13 @@ async function generateNpmConfig(dir, token) {
     });
     const template = await fs.readFile(`${__dirname}/.npmrc-public`, 'utf-8');
     const base64Token = Buffer.from(`${token.token}`).toString('base64');
+
+    core.exportVariable('ARTIFACTORY_USERNAME', token.username);
+    core.exportVariable('ARTIFACTORY_PASSWORD_BASE64', base64Token);
+
     const content = mustache.render(template, {
-        username: token.username,
-        token: base64Token
+        ARTIFACTORY_USERNAME: token.username,
+        ARTIFACTORY_PASSWORD_BASE64: base64Token
     });
 
     await fs.writeFile(npmFile, content);
