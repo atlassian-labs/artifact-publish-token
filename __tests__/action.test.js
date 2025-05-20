@@ -41,6 +41,10 @@ ARTIFACTORY_API_KEY=token-123
 `);
 });
 
+jest.mock('@actions/core', () => ({
+    ...jest.requireActual('@actions/core'),
+    exportVariable: jest.fn(),
+}));
 test('can generate npm config', async () => {
     // Arrange
     const base64Password = Buffer.from('token-123').toString('base64');

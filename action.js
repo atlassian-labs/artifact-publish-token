@@ -23,23 +23,12 @@ async function retrievePublishToken(idToken) {
 }
 
 async function generateNpmConfig(dir, token) {
-    // generate npm config file
-    const npmFile = path.join(dir, '.npmrc-public');
-    await fs.mkdir(dir, {
-        recursive: true
-    });
-    const template = await fs.readFile(`${__dirname}/.npmrc-public`, 'utf-8');
     const base64Token = Buffer.from(`${token.token}`).toString('base64');
 
     core.exportVariable('ARTIFACTORY_USERNAME', token.username);
     core.exportVariable('ARTIFACTORY_PASSWORD_BASE64', base64Token);
 
-    const content = mustache.render(template, {
-        ARTIFACTORY_USERNAME: token.username,
-        ARTIFACTORY_PASSWORD_BASE64: base64Token
-    });
-
-    await fs.writeFile(npmFile, content);
+    await fs.copyFile(`${dir}/.npmrc-public`, `./.npmrc-public`);
 }
 
 async function generateMavenSettings(dir, token) {
