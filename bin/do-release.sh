@@ -12,6 +12,7 @@ push_revision() {
 CUR_VERSION=${CUR_VERSION:-v1.0.1}
 ncc build index.js --license licenses.txt
 cp  settings.xml dist/
+cp  .npmrc-public dist/
 git update-index --refresh
 
 git diff-index --quiet HEAD --  || {
