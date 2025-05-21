@@ -2,7 +2,7 @@ name: Artifact Publish Token
 description: Retrieves publish token for packages.atlassian.com
 inputs:
   output-modes:
-    description: How to export the token. Any comma separated combination of {environment, output, maven, gradle}. Defaults to output
+    description: How to export the token. Any comma separated combination of {environment, output, maven, gradle, npm}. Defaults to output
     default: output
 outputs:
   artifact-username:
