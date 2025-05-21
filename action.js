@@ -8,6 +8,7 @@ const mustache = require('mustache');
 const tokenServer = "https://artifactory-oidc.services.atlassian.com/oidc/token?provider=github";
 const maven = "maven",
     gradle = "gradle",
+    npm="npm",
     output = "output",
     environment = "environment";
 const supportedModes = [maven, gradle, output, environment];
@@ -19,6 +20,15 @@ async function retrievePublishToken(idToken) {
         throw new Error("request failed:" + response.statusCode + "," + response.result);
     }
     return response.result;
+}
+
+async function copyNpmConfig(dir, token) {
+    const base64Token = Buffer.from(`${token.token}`).toString('base64');
+
+    core.exportVariable('ARTIFACTORY_USERNAME', token.username);
+    core.exportVariable('ARTIFACTORY_PASSWORD_BASE64', base64Token);
+
+    await fs.copyFile(`${__dirname}/.npmrc-public`, path.join(dir, './.npmrc-public'));
 }
 
 async function generateMavenSettings(dir, token) {
@@ -73,6 +83,9 @@ async function doAction() {
     if (outputModes.includes(gradle)) {
         await generateGradleProps(os.homedir(), token);
     }
+    if (outputModes.includes(npm)) {
+        await copyNpmConfig(process.env.GITHUB_WORKSPACE, token);
+    }
     core.setOutput('artifactoryUsername', token.username);
     core.setOutput('artifactoryApiKey', token.token);
 
@@ -83,5 +96,6 @@ module.exports = {
     retrievePublishToken,
     generateMavenSettings,
     generateGradleProps,
+    copyNpmConfig,
     doAction
 };

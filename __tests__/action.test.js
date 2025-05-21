@@ -40,3 +40,29 @@ ARTIFACTORY_USERNAME=test-user
 ARTIFACTORY_API_KEY=token-123
 `);
 });
+
+jest.mock('@actions/core', () => ({
+    ...jest.requireActual('@actions/core'),
+    exportVariable: jest.fn(),
+}));
+test('can generate npm config', async () => {
+    // Arrange
+    const dir = '/tmp';
+    const token = {
+        username: 'test-user',
+        token: 'token-123'
+    };
+
+    // Act
+    await core.copyNpmConfig(dir, token);
+
+    // Assert
+    const data = await fs.readFile(`${dir}/.npmrc-public`, 'utf8');
+    // check file exists
+    expect(data).toMatch(
+        `//packages.atlassian.com/api/npm/npm-public/:_password=\${ARTIFACTORY_PASSWORD_BASE64}
+//packages.atlassian.com/api/npm/npm-public/:username=\${ARTIFACTORY_USERNAME}
+//packages.atlassian.com/api/npm/npm-public/:email=build-team@atlassian.com
+//packages.atlassian.com/api/npm/npm-public/:always-auth=true`
+    );
+});
