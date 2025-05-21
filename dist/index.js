@@ -17,7 +17,7 @@ const maven = "maven",
     npm="npm",
     output = "output",
     environment = "environment";
-const supportedModes = [maven, gradle, output, environment];
+const supportedModes = [maven, npm, gradle, output, environment];
 
 async function retrievePublishToken(idToken) {
     let http_client = new http.HttpClient('github-action', [new auth.BearerCredentialHandler(idToken)]);
