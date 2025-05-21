@@ -10,7 +10,7 @@ The preferred output modes of the publish token. It supports the following value
 
 * **maven**: Creates the maven settings file (~/.m2/settings.xml) with the credentials for the repository `maven-atlassian-com`
 
-* **npm**: Creates the npm config file (~/.npmrc-public) with the credentials for the repository `npm-public`
+* **npm**: Creates the npm config file (./.npmrc-public) with the credentials for the repository `npm-public`
 
 * **gradle**: Creates the gradle global properties file (~/.gradle/gradle.properties) including the properties:  `ARTIFACTORY_USERNAME` and `ARTIFACTORY_API_KEY` populated with the temporary credentials
 
