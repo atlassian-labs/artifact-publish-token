@@ -1,4 +1,4 @@
-image: "node:22-slim"
+image: "node:24-slim"
 definitions:
   artifactory-pipe: &artifactory-pipe
     pipe: atlassian/artifactory-sidekick:v1
