@@ -1,9 +1,9 @@
-const action = require('./action.js');
-const core = require('@actions/core');
+import { doAction } from './action.js';
+import * as core from '@actions/core';
 
 (async function() {
     try {
-        await action.doAction();
+        await doAction();
     } catch (error) {
         core.setFailed(error.message);
     }

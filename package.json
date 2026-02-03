@@ -2,9 +2,10 @@
   "name": "artifact-publish-token",
   "version": "1.0.1",
   "description": "",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "build": "ncc build index.js --license licenses.txt",
     "release": "./bin/do-release.sh"
   },
@@ -33,5 +34,13 @@
       "browser": false,
       "node": true
     }
+  },
+  "jest": {
+    "globals": {
+      "__dirname": true,
+      "__filename": true
+    },
+    "transform": {},
+    "testEnvironment": "node"
   }
 }

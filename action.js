@@ -1,10 +1,15 @@
-const core = require('@actions/core');
-const http = require('@actions/http-client');
-const auth = require('@actions/http-client/lib/auth');
-const fs = require('fs').promises;
-const os = require('os');
-const path = require('path');
-const mustache = require('mustache');
+import * as core from '@actions/core';
+import { HttpClient } from '@actions/http-client';
+import { BearerCredentialHandler } from '@actions/http-client/lib/auth.js';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import mustache from 'mustache';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const tokenServer = "https://artifactory-oidc.services.atlassian.com/oidc/token?provider=github";
 const maven = "maven",
     gradle = "gradle",
@@ -14,7 +19,7 @@ const maven = "maven",
 const supportedModes = [maven, npm, gradle, output, environment];
 
 async function retrievePublishToken(idToken) {
-    let http_client = new http.HttpClient('github-action', [new auth.BearerCredentialHandler(idToken)]);
+    let http_client = new HttpClient('github-action', [new BearerCredentialHandler(idToken)]);
     let response = await http_client.postJson(tokenServer, null);
     if (response.statusCode != 200) {
         throw new Error("request failed:" + response.statusCode + "," + response.result);
@@ -92,7 +97,7 @@ async function doAction() {
 }
 
 
-module.exports = {
+export {
     retrievePublishToken,
     generateMavenSettings,
     generateGradleProps,
