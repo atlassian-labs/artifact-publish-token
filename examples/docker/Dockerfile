@@ -1,2 +1,2 @@
-FROM docker.atl-paas.net/sox/micros-build-golang-1.26-regulated:1.2.6 AS builder
+FROM docker.atl-paas.net/sox/micros-golang-regulated:1.3.5
 CMD ["echo", "Hello World!"]
