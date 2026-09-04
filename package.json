@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@vercel/ncc": "0.45.0",
-    "jest": "30.5.0"
+    "jest": "30.5.1"
   },
   "eslintConfig": {
     "env": {
