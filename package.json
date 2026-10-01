@@ -42,5 +42,8 @@
     },
     "transform": {},
     "testEnvironment": "node"
+  },
+  "overrides": {
+    "undici": "6.29.0"
   }
 }
