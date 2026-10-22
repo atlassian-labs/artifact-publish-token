@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Authenticate to Artifactory
         id: jfrog
-        uses: jfrog/setup-jfrog-cli@5a4fbe1e30dbb570cc62d2513421c4b9bc3c9959 # v4
+        uses: jfrog/setup-jfrog-cli@1e584506871998c267b7c100c02628a5b9c81db6 # v5
         env:
           JF_URL: https://packages.atlassian.com
         with:
