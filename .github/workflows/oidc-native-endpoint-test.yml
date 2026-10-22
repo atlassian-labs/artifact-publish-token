@@ -36,5 +36,5 @@ jobs:
           test -n "$USERNAME"
           curl --fail --silent --show-error \
             -H "Authorization: Bearer $TOKEN" \
-            'https://packages.atlassian.com/api/npm/npm-public/@atlassian-test-prod/hello-world' \
-            | jq -e '.name == "@atlassian-test-prod/hello-world"' >/dev/null
+            'https://packages.atlassian.com/api/npm/npm-remote/lodash' \
+            | jq -e '.name == "lodash"' >/dev/null
