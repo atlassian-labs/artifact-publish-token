@@ -1,0 +1,40 @@
+name: OIDC authentication test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency: oidc-native-endpoint-test
+
+jobs:
+  authenticate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Authenticate to Artifactory
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@5a4fbe1e30dbb570cc62d2513421c4b9bc3c9959 # v4
+        env:
+          JF_URL: https://packages.atlassian.com
+        with:
+          oidc-provider-name: github
+          oidc-audience: packages.atlassian.com
+          disable-auto-build-publish: "true"
+          disable-auto-evidence-collection: "true"
+          disable-job-summary: "true"
+
+      - name: Verify credentials
+        env:
+          TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+          USERNAME: ${{ steps.jfrog.outputs.oidc-user }}
+        run: |
+          set -euo pipefail
+          test -n "$TOKEN"
+          test -n "$USERNAME"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $TOKEN" \
+            'https://packages.atlassian.com/api/npm/npm-public/@atlassian-test-prod/hello-world' \
+            | jq -e '.name == "@atlassian-test-prod/hello-world"' >/dev/null
