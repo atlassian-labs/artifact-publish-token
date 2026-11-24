@@ -1460,15 +1460,17 @@ module.exports.install = install
 
 const { addAbortListener } = __nccwpck_require__(3440)
 const { RequestAbortedError } = __nccwpck_require__(8707)
+const { kQueuedAbort } = __nccwpck_require__(6443)
 
 const kListener = Symbol('kListener')
 const kSignal = Symbol('kSignal')
 
 function abort (self) {
+  // Keep the reason even when abort is set: a queued request that cannot be
+  // taken out of its queue is aborted once it starts.
+  self.reason = self[kSignal]?.reason ?? new RequestAbortedError()
   if (self.abort) {
-    self.abort(self[kSignal]?.reason)
-  } else {
-    self.reason = self[kSignal]?.reason ?? new RequestAbortedError()
+    self.abort(self.reason)
   }
   removeSignal(self)
 }
@@ -1484,7 +1486,7 @@ function addSignal (self, signal) {
   }
 
   if (signal.aborted) {
-    abort(self)
+    self.reason = signal.reason ?? new RequestAbortedError()
     return
   }
 
@@ -1511,9 +1513,57 @@ function removeSignal (self) {
   self[kListener] = null
 }
 
+// Dispatchers call the kQueuedAbort hook while a request waits for a
+// connection, with a function that takes it out of their queue. Until the
+// request starts, the handler's abort calls that function.
+//
+// A retry or a redirect dispatches the same handler again after an earlier
+// attempt started. The handler's abort then also calls the controller of that
+// attempt: it does nothing once the attempt is over, and still reaches a
+// response that a retry resumes.
+function queuedAbortHook (handler) {
+  // The abort set by onRequestStart, and the one this hook installed last.
+  let started = null
+  let installed = null
+  return (cancel) => {
+    if (handler.reason) {
+      cancel(handler.reason)
+      return
+    }
+
+    if (handler.abort !== installed) {
+      started = handler.abort
+    }
+
+    if (started === null) {
+      installed = cancel
+    } else {
+      const abortStarted = started
+      installed = (reason) => {
+        abortStarted(reason)
+        cancel(reason)
+      }
+    }
+    handler.abort = installed
+  }
+}
+
+// Dispatches a request whose options carry a signal. Requests without a signal
+// are dispatched directly and never reach this function.
+function dispatchWithSignal (dispatcher, opts, handler) {
+  if (handler.reason) {
+    // Already aborted: fail without dispatching, so no connection is opened.
+    handler.onResponseError(null, handler.reason)
+    return
+  }
+
+  dispatcher.dispatch({ ...opts, [kQueuedAbort]: queuedAbortHook(handler) }, handler)
+}
+
 module.exports = {
   addSignal,
-  removeSignal
+  removeSignal,
+  dispatchWithSignal
 }
 
 
@@ -1528,7 +1578,7 @@ const assert = __nccwpck_require__(4589)
 const { AsyncResource } = __nccwpck_require__(6698)
 const { InvalidArgumentError, SocketError } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
-const { addSignal, removeSignal } = __nccwpck_require__(158)
+const { addSignal, removeSignal, dispatchWithSignal } = __nccwpck_require__(158)
 
 class ConnectHandler extends AsyncResource {
   constructor (opts, callback) {
@@ -1623,7 +1673,11 @@ function connect (opts, callback) {
   try {
     const connectHandler = new ConnectHandler(opts, callback)
     const connectOptions = { ...opts, method: 'CONNECT' }
-    this.dispatch(connectOptions, connectHandler)
+    if (opts.signal == null) {
+      this.dispatch(connectOptions, connectHandler)
+    } else {
+      dispatchWithSignal(this, connectOptions, connectHandler)
+    }
   } catch (err) {
     if (typeof callback !== 'function') {
       throw err
@@ -1657,7 +1711,7 @@ const {
 } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
 const { kBodyUsed } = __nccwpck_require__(6443)
-const { addSignal, removeSignal } = __nccwpck_require__(158)
+const { addSignal, removeSignal, dispatchWithSignal } = __nccwpck_require__(158)
 
 function noop () {}
 
@@ -1769,7 +1823,7 @@ class PipelineHandler extends AsyncResource {
           err = new RequestAbortedError()
         }
 
-        if (abort && err) {
+        if (abort && (err || !res?.readableEnded)) {
           abort()
         }
 
@@ -1898,7 +1952,12 @@ class PipelineHandler extends AsyncResource {
 function pipeline (opts, handler) {
   try {
     const pipelineHandler = new PipelineHandler(opts, handler)
-    this.dispatch({ ...opts, body: pipelineHandler.req }, pipelineHandler)
+    const pipelineOpts = { ...opts, body: pipelineHandler.req }
+    if (opts.signal == null) {
+      this.dispatch(pipelineOpts, pipelineHandler)
+    } else {
+      dispatchWithSignal(this, pipelineOpts, pipelineHandler)
+    }
     return pipelineHandler.ret
   } catch (err) {
     return new PassThrough().destroy(err)
@@ -1920,6 +1979,7 @@ const { AsyncResource } = __nccwpck_require__(6698)
 const { Readable } = __nccwpck_require__(9927)
 const { InvalidArgumentError, RequestAbortedError } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
+const { dispatchWithSignal } = __nccwpck_require__(158)
 
 function noop () {}
 
@@ -1952,6 +2012,11 @@ class RequestHandler extends AsyncResource {
         throw new InvalidArgumentError('invalid onInfo callback')
       }
 
+      // Reject before dispatching: onRequestStart only runs once a connection is established.
+      if (signal?.aborted) {
+        throw signal.reason ?? new RequestAbortedError()
+      }
+
       super('UNDICI_REQUEST')
     } catch (err) {
       if (util.isStream(body)) {
@@ -1975,9 +2040,7 @@ class RequestHandler extends AsyncResource {
     this.reason = null
     this.removeAbortListener = null
 
-    if (signal?.aborted) {
-      this.reason = signal.reason ?? new RequestAbortedError()
-    } else if (signal) {
+    if (signal) {
       this.removeAbortListener = util.addAbortListener(signal, () => {
         this.reason = signal.reason ?? new RequestAbortedError()
         if (this.res) {
@@ -2018,7 +2081,7 @@ class RequestHandler extends AsyncResource {
 
     if (statusCode < 200) {
       if (this.onInfo) {
-        this.onInfo({ statusCode, headers: responseHeaderData })
+        this.runInAsyncScope(this.onInfo, null, { statusCode, headers: responseHeaderData })
       }
       return
     }
@@ -2145,7 +2208,11 @@ function request (opts, callback) {
   try {
     const handler = new RequestHandler(opts, callback)
 
-    this.dispatch(opts, handler)
+    if (opts.signal == null) {
+      this.dispatch(opts, handler)
+    } else {
+      dispatchWithSignal(this, opts, handler)
+    }
   } catch (err) {
     if (typeof callback !== 'function') {
       throw err
@@ -2170,7 +2237,7 @@ const assert = __nccwpck_require__(4589)
 const { AsyncResource } = __nccwpck_require__(6698)
 const { InvalidArgumentError, InvalidReturnValueError } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
-const { addSignal, removeSignal } = __nccwpck_require__(158)
+const { addSignal, removeSignal, dispatchWithSignal } = __nccwpck_require__(158)
 
 function noop () {}
 
@@ -2423,7 +2490,11 @@ function stream (opts, factory, callback) {
   try {
     const handler = new StreamHandler(opts, factory, callback)
 
-    this.dispatch(opts, handler)
+    if (opts.signal == null) {
+      this.dispatch(opts, handler)
+    } else {
+      dispatchWithSignal(this, opts, handler)
+    }
   } catch (err) {
     if (typeof callback !== 'function') {
       throw err
@@ -2448,7 +2519,7 @@ const { AsyncResource } = __nccwpck_require__(6698)
 const assert = __nccwpck_require__(4589)
 const util = __nccwpck_require__(3440)
 const { kHTTP2Stream } = __nccwpck_require__(6443)
-const { addSignal, removeSignal } = __nccwpck_require__(158)
+const { addSignal, removeSignal, dispatchWithSignal } = __nccwpck_require__(158)
 
 class UpgradeHandler extends AsyncResource {
   constructor (opts, callback) {
@@ -2551,7 +2622,11 @@ function upgrade (opts, callback) {
       method: opts.method || 'GET',
       upgrade: opts.protocol || 'Websocket'
     }
-    this.dispatch(upgradeOpts, upgradeHandler)
+    if (opts.signal == null) {
+      this.dispatch(upgradeOpts, upgradeHandler)
+    } else {
+      dispatchWithSignal(this, upgradeOpts, upgradeHandler)
+    }
   } catch (err) {
     if (typeof callback !== 'function') {
       throw err
@@ -5293,6 +5368,8 @@ const kHandler = Symbol('handler')
 const kController = Symbol('controller')
 const kResume = Symbol('resume')
 
+function noop () {}
+
 class RequestController {
   #paused = false
   #reason = null
@@ -5709,10 +5786,24 @@ class Request {
     }
   }
 
+  // Fails a request that was aborted before it reached a connection. The
+  // handler gets an aborted controller, so wrappers such as RetryHandler can
+  // tell a caller abort apart from a retryable connection failure.
+  onQueuedAbort (reason) {
+    this[kController] = createAbortedController(reason)
+    return this.onResponseError(reason)
+  }
+
   addHeader (key, value) {
     processHeader(this, key, value)
     return this
   }
+}
+
+function createAbortedController (reason) {
+  const controller = new RequestController(noop)
+  controller.abort(reason)
+  return controller
 }
 
 function processHeader (request, key, val) {
@@ -5826,6 +5917,7 @@ function isUndiciFormData (body) {
 }
 
 module.exports = Request
+module.exports.createAbortedController = createAbortedController
 
 
 /***/ }),
@@ -6543,6 +6635,7 @@ module.exports = {
   kMaxResponseSize: Symbol('max response size'),
   kHTTP2Session: Symbol('http2Session'),
   kHTTP2Options: Symbol('http2 options'),
+  kQueuedAbort: Symbol('queued abort'),
   kHTTP2SessionState: Symbol('http2Session state'),
   kRetryHandlerDefaultRetry: Symbol('retry agent default retry'),
   kConstruct: Symbol('constructable'),
@@ -6560,7 +6653,8 @@ module.exports = {
   kNoProxyAgent: Symbol('no proxy agent'),
   kHttpProxyAgent: Symbol('http proxy agent'),
   kHttpsProxyAgent: Symbol('https proxy agent'),
-  kSocks5ProxyAgent: Symbol('socks5 proxy agent')
+  kSocks5ProxyAgent: Symbol('socks5 proxy agent'),
+  kInterceptorKind: Symbol('interceptor kind')
 }
 
 
@@ -7876,7 +7970,7 @@ class Agent extends DispatcherBase {
         ? { ...this[kOptions], allowH2: false }
         : this[kOptions])
 
-      const closeClientIfUnused = () => {
+      const closeClientIfUnused = (deferred = false) => {
         if (this[kClients].get(key) !== dispatcher) {
           return
         }
@@ -7886,7 +7980,16 @@ class Agent extends DispatcherBase {
         // no connected clients and is not busy, but it still has pending work.
         // Closing it here lets the replacement Client finish those requests
         // and then destroys that new connection with ClientDestroyedError.
-        if (dispatcher[kConnected] > 0 || dispatcher[kBusy] || dispatcher[kPending] > 0) {
+        if (dispatcher[kConnected] > 0 || dispatcher[kBusy]) {
+          return
+        }
+
+        if (dispatcher[kPending] > 0) {
+          if (!deferred) {
+            queueMicrotask(() => {
+              closeClientIfUnused(true)
+            })
+          }
           return
         }
 
@@ -8259,6 +8362,7 @@ const removeAllListeners = util.removeAllListeners
 const kIdleSocketValidation = Symbol('kIdleSocketValidation')
 const kIdleSocketValidationTimeout = Symbol('kIdleSocketValidationTimeout')
 const kSocketUsed = Symbol('kSocketUsed')
+const kIdleSince = Symbol('kIdleSince')
 const kTypeOfService = Symbol('kTypeOfService')
 
 let extractBody
@@ -9300,6 +9404,19 @@ function scheduleIdleSocketValidation (client, socket) {
 }
 
 /**
+ * kIdleSince is recorded when the keep-alive timer is armed, so this never
+ * expires a socket before that timer is due.
+ * @param {import('net').Socket} socket
+ * @returns {boolean}
+ */
+function isIdleSocketExpired (socket) {
+  const parser = socket[kParser]
+  return parser.timeoutType === TIMEOUT_KEEP_ALIVE &&
+    parser.timeoutValue > 0 &&
+    performance.now() - socket[kIdleSince] >= parser.timeoutValue
+}
+
+/**
  * @param {import('./client.js')} client
  */
 function resumeH1 (client) {
@@ -9314,6 +9431,15 @@ function resumeH1 (client) {
     } else if (socket[kNoRef] && socket.ref) {
       socket.ref()
       socket[kNoRef] = false
+    }
+
+    // The keep-alive timer cannot fire while the event loop is blocked, and a
+    // request dispatched from the poll phase passes the idle socket validation
+    // below before that timer or a FIN received during the block is processed.
+    // Check the clock so that an expired socket is not reused.
+    if (client[kRunning] === 0 && client[kPending] > 0 && isIdleSocketExpired(socket)) {
+      util.destroy(socket, new InformationalError('socket idle timeout'))
+      return
     }
 
     if (client[kRunning] === 0 && client[kPending] > 0 && socket[kSocketUsed]) {
@@ -9344,6 +9470,7 @@ function resumeH1 (client) {
 
     if (client[kSize] === 0) {
       if (socket[kParser].timeoutType !== TIMEOUT_KEEP_ALIVE) {
+        socket[kIdleSince] = performance.now()
         socket[kParser].setTimeout(client[kKeepAliveTimeoutValue], TIMEOUT_KEEP_ALIVE)
       }
     } else if (client[kRunning] > 0 && socket[kParser].statusCode < 200) {
@@ -10136,6 +10263,7 @@ const {
     HTTP2_HEADER_STATUS,
     HTTP2_HEADER_PROTOCOL,
     NGHTTP2_NO_ERROR,
+    NGHTTP2_PROTOCOL_ERROR,
     NGHTTP2_REFUSED_STREAM
   }
 } = http2
@@ -10345,7 +10473,9 @@ function connectH2 (client, socket) {
     // refH2Session/unrefH2Session.
     refed: true,
     ping: {
-      interval: client[kHTTP2Options].pingInterval === 0 ? null : setInterval(onHttp2SendPing, client[kHTTP2Options].pingInterval, session).unref()
+      interval: client[kHTTP2Options].pingInterval === 0 ? null : setInterval(onHttp2SendPing, client[kHTTP2Options].pingInterval, session).unref(),
+      // Set while a periodic PING waits for its ack.
+      pending: false
     }
   }
   session[kReceivedGoAway] = false
@@ -10610,6 +10740,10 @@ function onHttp2ProbeTimeout (session) {
     return
   }
 
+  resetUnresponsiveHttp2Session(session)
+}
+
+function resetUnresponsiveHttp2Session (session) {
   const err = new SocketError('HTTP/2: connection unresponsive', util.getSocketInfo(session[kSocket]))
   session[kError] = err
   resetHttp2Session(session, err)
@@ -10703,16 +10837,27 @@ function onHttp2SendPing (session) {
     return
   }
 
-  // If no ping sent, do nothing
+  // An unacked PING never calls back, so a connection that silently died
+  // (dropped by a NAT or load balancer, a hung peer) would be kept forever when
+  // no stream times out on it, e.g. when every request is aborted first.
+  if (state.ping.pending) {
+    resetUnresponsiveHttp2Session(session)
+    return
+  }
+
+  state.ping.pending = true
   session.ping(onPing.bind(session))
 
   function onPing (err, duration) {
+    state.ping.pending = false
+
     const client = this[kClient]
     const socket = this[kSocket]
 
     if (err != null) {
       const error = new InformationalError(`HTTP/2: "PING" errored - type ${err.message}`)
-      socket[kError] = error
+      // Keep the reason the session was torn down if that is what cancelled the PING.
+      socket[kError] ??= error
       client[kOnError](error)
     } else {
       client.emit('ping', duration)
@@ -11729,11 +11874,16 @@ function onError (err) {
   // noop error sink so that re-delivery cannot go unhandled.
   stream.on('error', noop)
 
-  // Node's HTTP/2 implementation can turn an incomplete Content-Length body
-  // into a protocol stream error instead of emitting 'end'. Prefer the
-  // content-length mismatch error when the received byte count proves it.
-  if (state.responseContentLength != null && state.bytesRead !== state.responseContentLength) {
-    err = new ResponseContentLengthMismatchError()
+  // Node may report Content-Length violations as protocol errors.
+  if (
+    (err.code === 'ERR_HTTP2_ERROR' ||
+      (err.code === 'ERR_HTTP2_STREAM_ERROR' && stream.rstCode === NGHTTP2_PROTOCOL_ERROR)) &&
+    state.responseContentLength != null &&
+    state.bytesRead !== state.responseContentLength
+  ) {
+    const mismatch = new ResponseContentLengthMismatchError()
+    mismatch.cause = err
+    err = mismatch
   }
 
   if (typeof stream.rstCode === 'number' && stream.rstCode !== NGHTTP2_NO_ERROR) {
@@ -12096,12 +12246,14 @@ const {
   kHostAuthority,
   kResume,
   kHTTP2Options,
-  kUseMilo
+  kUseMilo,
+  kQueuedAbort
 } = __nccwpck_require__(6443)
 const connectH1 = __nccwpck_require__(637)
 const connectH2 = __nccwpck_require__(8788)
 
 const kClosedResolve = Symbol('kClosedResolve')
+const kCancelConnect = Symbol('kCancelConnect')
 
 const getDefaultNodeMaxHeaderSize = http &&
   http.maxHeaderSize &&
@@ -12363,6 +12515,7 @@ class Client extends DispatcherBase {
     this[kClosedResolve] = null
     this[kMaxResponseSize] = maxResponseSize > -1 ? maxResponseSize : -1
     this[kHTTPContext] = null
+    this[kCancelConnect] = null
     // h2
     this[kHTTP2Options] = {
       pingInterval: h2Options?.pingInterval ?? pingInterval ?? 60e3,
@@ -12443,6 +12596,8 @@ class Client extends DispatcherBase {
 
   [kConnect] (cb) {
     connect(this)
+    // Asked for explicitly: keep it even if no request waits for it.
+    this[kCancelConnect] = null
     this.once('connect', cb)
   }
 
@@ -12458,6 +12613,15 @@ class Client extends DispatcherBase {
       queueMicrotask(() => resume(this))
     } else {
       this[kResume](true)
+    }
+
+    if (request.abort === null && !request.aborted) {
+      // The request is still waiting for a connection: if its handler listens
+      // to a signal, give it a way to take the request out of the queue.
+      const onQueued = opts[kQueuedAbort]
+      if (onQueued !== undefined) {
+        onQueued((reason) => abortPendingRequest(this, request, reason))
+      }
     }
 
     if (this[kResuming] && this[kNeedDrain] !== 2 && this[kBusy]) {
@@ -12510,6 +12674,56 @@ class Client extends DispatcherBase {
   }
 }
 
+function failQueuedRequest (client, request, reason) {
+  try {
+    request.onQueuedAbort(reason)
+    assert(request.aborted)
+  } catch (err) {
+    client.emit('error', err)
+  }
+}
+
+function abortPendingRequest (client, request, reason) {
+  // The request already settled, or it started and its handler owns the abort.
+  if (request.aborted || request.abort !== null) {
+    return
+  }
+
+  const queue = client[kQueue]
+  const idx = queue.indexOf(request, client[kPendingIdx])
+  if (idx === -1) {
+    return
+  }
+
+  // _resume() may be handing this request to the connection right now, before
+  // onRequestStart runs. Leave it there: the handler aborts it once it starts.
+  if (idx === client[kPendingIdx] && client[kResuming] === 2) {
+    return
+  }
+
+  queue.splice(idx, 1)
+  failQueuedRequest(client, request, reason)
+
+  // The client may no longer be busy: emit 'drain' so a Pool can use it again.
+  client[kResume](true)
+
+  if (client[kCancelConnect] !== null && client[kSize] === 0) {
+    // The drain is emitted in a microtask: check once a Pool had the chance to
+    // hand this client the requests it queued.
+    queueMicrotask(() => cancelUnusedConnect(client))
+  }
+}
+
+// A connection attempt that no request waits for only holds a connection slot,
+// until it connects or times out. Destroy it, so the next request starts a new
+// one instead of waiting for it.
+function cancelUnusedConnect (client) {
+  const cancel = client[kCancelConnect]
+  if (cancel !== null && client[kSize] === 0) {
+    cancel(new InformationalError('no request waits for this connection'))
+  }
+}
+
 function onError (client, err) {
   if (
     client[kRunning] === 0 &&
@@ -12556,6 +12770,38 @@ function connect (client) {
 
   client[kConnecting] = true
 
+  // The name this attempt verifies the server's certificate for. While it
+  // connects, its requests can be aborted and _resume() can switch
+  // client[kServerName] to the name of the next queued request.
+  const servername = client[kServerName]
+
+  let calledBack = false
+  let cancelled = false
+
+  // Ends this attempt without a 'connectionError': no request failed, and a
+  // Pool would retire this client.
+  const abandon = (socket, err) => {
+    client[kConnecting] = false
+
+    if (channels.connectError.hasSubscribers) {
+      channels.connectError.publish({
+        connectParams: {
+          host,
+          hostname,
+          protocol,
+          port,
+          version: client[kHTTPContext]?.version,
+          servername,
+          localAddress: client[kLocalAddress]
+        },
+        connector: client[kConnector],
+        error: err
+      })
+    }
+
+    util.destroy(socket.on('error', noop), err)
+  }
+
   if (channels.beforeConnect.hasSubscribers) {
     channels.beforeConnect.publish({
       connectParams: {
@@ -12564,7 +12810,7 @@ function connect (client) {
         protocol,
         port,
         version: client[kHTTPContext]?.version,
-        servername: client[kServerName],
+        servername,
         localAddress: client[kLocalAddress]
       },
       connector: client[kConnector]
@@ -12572,16 +12818,27 @@ function connect (client) {
   }
 
   try {
-    client[kConnector]({
+    const connecting = client[kConnector]({
       host,
       hostname,
       protocol,
       port,
-      servername: client[kServerName],
+      servername,
       localAddress: client[kLocalAddress]
     }, (err, socket) => {
+      calledBack = true
+
+      if (cancelled) {
+        if (socket) {
+          util.destroy(socket.on('error', noop))
+        }
+        return
+      }
+
+      client[kCancelConnect] = null
+
       if (err) {
-        handleConnectError(client, err, { host, hostname, protocol, port })
+        handleConnectError(client, err, { host, hostname, protocol, port, servername })
         client[kResume]()
         return
       }
@@ -12594,13 +12851,21 @@ function connect (client) {
 
       assert(socket)
 
+      if (client[kServerName] !== servername) {
+        // The server proved its identity for another name than the one the
+        // queued requests are for: never send them on this connection.
+        abandon(socket, new InformationalError('servername changed'))
+        client[kResume]()
+        return
+      }
+
       try {
         client[kHTTPContext] = socket.alpnProtocol === 'h2'
           ? connectH2(client, socket)
           : connectH1(client, socket)
       } catch (err) {
         socket.destroy().on('error', noop)
-        handleConnectError(client, err, { host, hostname, protocol, port })
+        handleConnectError(client, err, { host, hostname, protocol, port, servername })
         client[kResume]()
         return
       }
@@ -12620,7 +12885,7 @@ function connect (client) {
             protocol,
             port,
             version: client[kHTTPContext]?.version,
-            servername: client[kServerName],
+            servername,
             localAddress: client[kLocalAddress]
           },
           connector: client[kConnector],
@@ -12631,13 +12896,23 @@ function connect (client) {
       client.emit('connect', client[kUrl], [client])
       client[kResume]()
     })
+
+    // The attempt can only be cancelled through the socket the connector
+    // returns. The built-in connector returns it; custom connectors may not.
+    if (!calledBack && util.isStream(connecting)) {
+      client[kCancelConnect] = (err) => {
+        cancelled = true
+        client[kCancelConnect] = null
+        abandon(connecting, err)
+      }
+    }
   } catch (err) {
-    handleConnectError(client, err, { host, hostname, protocol, port })
+    handleConnectError(client, err, { host, hostname, protocol, port, servername })
     client[kResume]()
   }
 }
 
-function handleConnectError (client, err, { host, hostname, protocol, port }) {
+function handleConnectError (client, err, { host, hostname, protocol, port, servername }) {
   if (client.destroyed) {
     return
   }
@@ -12652,7 +12927,7 @@ function handleConnectError (client, err, { host, hostname, protocol, port }) {
         protocol,
         port,
         version: client[kHTTPContext]?.version,
-        servername: client[kServerName],
+        servername,
         localAddress: client[kLocalAddress]
       },
       connector: client[kConnector],
@@ -12668,7 +12943,8 @@ function handleConnectError (client, err, { host, hostname, protocol, port }) {
       util.errorRequest(client, running[i], err)
     }
 
-    while (client[kPending] > 0 && client[kQueue][client[kPendingIdx]].servername === client[kServerName]) {
+    // Only the requests for the name the certificate failed for.
+    while (client[kPending] > 0 && client[kQueue][client[kPendingIdx]].servername === servername) {
       const request = client[kQueue].splice(client[kPendingIdx], 1)[0]
       util.errorRequest(client, request, err)
     }
@@ -12759,6 +13035,9 @@ function _resume (client, sync) {
         client[kHTTPContext] = null
         resume(client)
       })
+      // A pending attempt verifies the server for the previous name, and its
+      // connection is discarded once it connects: do not wait for it.
+      client[kCancelConnect]?.(new InformationalError('servername changed'))
     }
 
     if (client[kConnecting]) {
@@ -12987,7 +13266,12 @@ class DispatcherBase extends Dispatcher {
 
       handler.onResponseError(null, err)
 
-      return false
+      // The request failed synchronously: no work was queued on this
+      // dispatcher, no capacity was consumed and no 'drain' event will
+      // ever follow. Returning false would make callers (e.g. Pool)
+      // mark this dispatcher as busy waiting for a drain that never
+      // comes, permanently taking it out of rotation.
+      return true
     }
   }
 }
@@ -13002,7 +13286,8 @@ module.exports = DispatcherBase
 
 
 const EventEmitter = __nccwpck_require__(8474)
-const { kOriginless, kUrl } = __nccwpck_require__(6443)
+const { InvalidArgumentError } = __nccwpck_require__(8707)
+const { kOriginless, kUrl, kInterceptorKind } = __nccwpck_require__(6443)
 
 class Dispatcher extends EventEmitter {
   dispatch () {
@@ -13026,6 +13311,8 @@ class Dispatcher extends EventEmitter {
       : this[kUrl]?.origin
     let dispatch = this.dispatch.bind(this)
 
+    const orderSensitiveKinds = []
+
     for (const interceptor of interceptors) {
       if (interceptor == null) {
         continue
@@ -13035,11 +13322,29 @@ class Dispatcher extends EventEmitter {
         throw new TypeError(`invalid interceptor, expected function received ${typeof interceptor}`)
       }
 
+      if (interceptor[kInterceptorKind] != null) {
+        orderSensitiveKinds.push(interceptor[kInterceptorKind])
+      }
+
       dispatch = interceptor(dispatch, interceptorOrigin)
 
       if (dispatch == null || typeof dispatch !== 'function' || dispatch.length !== 2) {
         throw new TypeError('invalid interceptor')
       }
+    }
+
+    // Several shipped interceptors are order-sensitive: they cooperate through
+    // the redirect history threaded on the request context, and the cache
+    // handler only receives it when the redirect interceptor is composed before
+    // the cache interceptor. Composing `cache` before `redirect` silently
+    // disables the cache's redirect-origin guards (cross-origin cache
+    // poisoning, credential-bearing redirect replay), so fail fast instead of
+    // storing an attacker-controlled or cross-principal response under a key
+    // the application trusts.
+    const cacheIndex = orderSensitiveKinds.indexOf('cache')
+    const redirectIndex = orderSensitiveKinds.indexOf('redirect')
+    if (cacheIndex !== -1 && redirectIndex !== -1 && cacheIndex < redirectIndex) {
+      throw new InvalidArgumentError('the cache interceptor must be composed after the redirect interceptor; composing the cache before the redirect disables the cache\'s cross-origin and credential redirect guards (GHSA-75VM-9G8F-99J4, GHSA-MQG3-3V4R-CM32, GHSA-4W7W-5XRC-9H26, GHSA-7XG3-FPHP-28HG)')
     }
 
     const originalDispatch = dispatch
@@ -14674,7 +14979,8 @@ const { AsyncResource } = __nccwpck_require__(6698)
 const { PoolStats } = __nccwpck_require__(6854)
 const DispatcherBase = __nccwpck_require__(1841)
 const FixedQueue = __nccwpck_require__(4660)
-const { kConnected, kSize, kRunning, kPending, kQueued, kBusy, kFree, kUrl, kClose, kDestroy, kDispatch } = __nccwpck_require__(6443)
+const { kConnected, kSize, kRunning, kPending, kQueued, kBusy, kFree, kUrl, kClose, kDestroy, kDispatch, kQueuedAbort } = __nccwpck_require__(6443)
+const { createAbortedController } = __nccwpck_require__(4655)
 
 const kClients = Symbol('clients')
 const kNeedDrain = Symbol('needDrain')
@@ -14693,6 +14999,8 @@ const kAddClient = Symbol('add client')
 const kRemoveClient = Symbol('remove client')
 const kRetireClient = Symbol('retire client')
 const kRetiring = Symbol('retiring clients')
+const kShiftQueue = Symbol('shift queue')
+const kAbortQueued = Symbol('abort queued')
 
 // Closes every live client, including clients that have been
 // taken out of rotation but are still finishing their own
@@ -14706,6 +15014,8 @@ class QueuedRequest extends AsyncResource {
     super('UNDICI_POOL_QUEUED_REQUEST')
     this.opts = opts
     this.handler = handler
+    // Cleared once the request leaves the queue, so a late abort is ignored.
+    this.queued = true
   }
 
   dispatch (dispatcher) {
@@ -14745,17 +15055,15 @@ class PoolBase extends DispatcherBase {
       return
     }
 
-    const queue = this[kQueue]
     let needDrain = false
 
     this[kOnClientDrain](client)
 
     while (!needDrain) {
-      const item = queue.shift()
+      const item = this[kShiftQueue]()
       if (!item) {
         break
       }
-      this[kQueued]--
       needDrain = !item.dispatch(client)
     }
 
@@ -14768,7 +15076,7 @@ class PoolBase extends DispatcherBase {
       // negotiated and hit maxConcurrentStreams. Hand the rest to other
       // clients, creating new ones up to the connection limit, instead of
       // leaving them for this client to drain one batch at a time.
-      if (!queue.isEmpty()) {
+      if (this[kQueued] > 0) {
         return this[kDrainQueue](origin, targets)
       }
     }
@@ -14778,7 +15086,7 @@ class PoolBase extends DispatcherBase {
       this.emit('drain', origin, [this, ...targets])
     }
 
-    if (this[kClosedResolve] && queue.isEmpty()) {
+    if (this[kClosedResolve] && this[kQueued] === 0) {
       return closeClients(this).then(this[kClosedResolve])
     }
   }
@@ -14788,23 +15096,31 @@ class PoolBase extends DispatcherBase {
   [kOnClientDrain] () {}
 
   [kDrainQueue] (origin, targets) {
-    const queue = this[kQueue]
     let hasDispatcher = true
 
-    while (!queue.isEmpty()) {
-      const dispatcher = this[kGetDispatcher]()
+    while (this[kQueued] > 0) {
+      let dispatcher
+      try {
+        dispatcher = this[kGetDispatcher]()
+      } catch (err) {
+        // Selection failed before a dispatcher took ownership of this item.
+        const item = this[kShiftQueue]()
+        item.runInAsyncScope(item.handler.onResponseError, item.handler, null, err)
+        // The error handler may synchronously dispatch and consume capacity.
+        hasDispatcher = !this.destroyed && this[kHasDispatcher](false)
+        continue
+      }
       if (!dispatcher) {
         hasDispatcher = false
         break
       }
 
-      const item = queue.shift()
-      this[kQueued]--
+      const item = this[kShiftQueue]()
 
       if (!item.dispatch(dispatcher)) {
         dispatcher[kNeedDrain] = true
         this[kOnClientBusy](dispatcher)
-        hasDispatcher = this[kHasDispatcher]()
+        hasDispatcher = this[kHasDispatcher](false)
         if (!hasDispatcher) {
           break
         }
@@ -14816,8 +15132,45 @@ class PoolBase extends DispatcherBase {
       this.emit('drain', origin, [this, ...targets])
     }
 
-    if (this[kClosedResolve] && queue.isEmpty()) {
+    if (this[kClosedResolve] && this[kQueued] === 0) {
       return closeClients(this).then(this[kClosedResolve])
+    }
+  }
+
+  // Aborted requests stay in the queue as tombstones (queued === false) and
+  // are skipped here; kQueued only counts the live ones.
+  [kShiftQueue] () {
+    const queue = this[kQueue]
+    let item = queue.shift()
+    while (item !== null && item.queued === false) {
+      item = queue.shift()
+    }
+
+    if (item !== null) {
+      this[kQueued]--
+      item.queued = false
+    }
+
+    return item
+  }
+
+  // Called through the handler's kQueuedAbort hook when a queued request is
+  // aborted.
+  [kAbortQueued] (item, reason) {
+    if (!item.queued) {
+      return
+    }
+
+    const { handler } = item
+    item.queued = false
+    item.opts = null
+    item.handler = null
+    this[kQueued]--
+
+    item.runInAsyncScope(handler.onResponseError, handler, createAbortedController(reason), reason)
+
+    if (this[kClosedResolve] && this[kQueued] === 0) {
+      closeClients(this).then(this[kClosedResolve])
     }
   }
 
@@ -14882,7 +15235,7 @@ class PoolBase extends DispatcherBase {
   }
 
   [kClose] () {
-    if (this[kQueue].isEmpty()) {
+    if (this[kQueued] === 0) {
       return closeClients(this)
     } else {
       return new Promise((resolve) => {
@@ -14893,7 +15246,7 @@ class PoolBase extends DispatcherBase {
 
   [kDestroy] (err) {
     while (true) {
-      const item = this[kQueue].shift()
+      const item = this[kShiftQueue]()
       if (!item) {
         break
       }
@@ -14914,9 +15267,17 @@ class PoolBase extends DispatcherBase {
     const dispatcher = this[kGetDispatcher]()
 
     if (!dispatcher) {
+      const item = new QueuedRequest(opts, handler)
       this[kNeedDrain] = true
-      this[kQueue].push(new QueuedRequest(opts, handler))
+      this[kQueue].push(item)
       this[kQueued]++
+
+      const onQueued = opts[kQueuedAbort]
+      if (onQueued !== undefined) {
+        // Give the handler a way to remove the request from the queue as soon
+        // as it is aborted.
+        onQueued((reason) => this[kAbortQueued](item, reason))
+      }
     } else if (!dispatcher.dispatch(opts, handler)) {
       dispatcher[kNeedDrain] = true
       this[kOnClientBusy](dispatcher)
@@ -15042,7 +15403,7 @@ const {
   InvalidArgumentError
 } = __nccwpck_require__(8707)
 const util = __nccwpck_require__(3440)
-const { kConnecting, kHTTPContext, kUrl, kQueued } = __nccwpck_require__(6443)
+const { kConnecting, kHTTPContext, kHTTP2Session, kRemoteSettings, kUrl, kQueued } = __nccwpck_require__(6443)
 const buildConnector = __nccwpck_require__(9136)
 
 const kOptions = Symbol('options')
@@ -15140,12 +15501,25 @@ class Pool extends PoolBase {
       }
 
       if (client === this[kProtocolProbe]) {
-        // An h2 Client's drain event releases the requests accumulated during
-        // negotiation onto that Client. If ALPN selected h1, release the probe
-        // immediately and restore normal Pool fan-out instead.
-        if (this[kProtocol] !== 'h2') {
-          this[kProtocolProbe] = null
-          this[kDrainQueue](origin, targets.slice(1))
+        const releaseProbe = () => {
+          if (client === this[kProtocolProbe]) {
+            this[kProtocolProbe] = null
+            // An empty queue must not release backpressure when this client
+            // is still saturated and the connection limit prevents fan-out.
+            // Check capacity without invoking a factory for unused capacity.
+            if (!this.destroyed && (this[kQueued] > 0 || (!this.closed && this[kHasDispatcher](false)))) {
+              this[kDrainQueue](origin, targets.slice(1))
+            }
+          }
+        }
+        const session = client[kHTTP2Session]
+        // A peer's stream limit can keep the probe busy indefinitely. Once
+        // SETTINGS arrive, queued work may need another connection without
+        // waiting for this client's drain event.
+        if (this[kProtocol] !== 'h2' || session[kRemoteSettings]) {
+          releaseProbe()
+        } else {
+          session.once('remoteSettings', releaseProbe)
         }
       }
     })
@@ -15224,7 +15598,7 @@ class Pool extends PoolBase {
     }
   }
 
-  [kHasDispatcher] () {
+  [kHasDispatcher] (create = true) {
     const clientTtlOption = this[kOptions].clientTtl
     for (let i = 0; i < this[kClients].length; i++) {
       const client = this[kClients][i]
@@ -15242,7 +15616,7 @@ class Pool extends PoolBase {
     }
 
     if (!this[kConnections] || this[kClients].length < this[kConnections]) {
-      createClient(this)
+      if (create) createClient(this)
       return true
     }
 
@@ -15419,8 +15793,10 @@ class ProxyAgent extends DispatcherBase {
           headers: this[kProxyHeaders],
           connect,
           factory: agentFactory,
-          username: opts.username || username,
-          password: opts.password || password,
+          // Socks5ProxyAgent decodes the credentials embedded in the URI;
+          // the URL getters return them still percent-encoded.
+          username: opts.username,
+          password: opts.password,
           connectTimeout,
           proxyTls: opts.proxyTls,
           requestTls: opts.requestTls
@@ -16814,7 +17190,7 @@ class CacheHandler {
         deleteCachedValue(this.#store, this.#cacheKey)
       }
 
-      // Don't have anything to tell us this response is cachable and we're not
+      // Don't have anything to tell us this response is cacheable and we're not
       //  caching by default
       return downstreamOnHeaders()
     }
@@ -18694,7 +19070,7 @@ module.exports = RedirectHandler
 
 const assert = __nccwpck_require__(4589)
 
-const { kRetryHandlerDefaultRetry } = __nccwpck_require__(6443)
+const { kRetryHandlerDefaultRetry, kQueuedAbort } = __nccwpck_require__(6443)
 const { RequestRetryError, RequestAbortedError } = __nccwpck_require__(8707)
 const {
   hasSafeIterator,
@@ -18791,6 +19167,11 @@ class RetryController {
 }
 
 class RetryHandler {
+  // Takes the retry that waits for a connection out of its queue.
+  #queuedCancel = null
+  // Whether retries are dispatched with a hook that sets #queuedCancel.
+  #tracksQueuedRetry = false
+
   constructor (opts, { dispatch, handler }) {
     const { retryOptions, ...dispatchOpts } = opts
     const {
@@ -19254,6 +19635,18 @@ class RetryHandler {
       }
     }
 
+    if (!this.#tracksQueuedRetry) {
+      // The consumer's controller still targets the earlier attempt, so an
+      // abort would not reach a retry that waits for a connection. Keep the
+      // function that takes it out of its queue; the caller's hook still runs.
+      this.#tracksQueuedRetry = true
+      const onQueued = this.opts[kQueuedAbort]
+      this.opts[kQueuedAbort] = (cancel) => {
+        this.#queuedCancel = cancel
+        onQueued?.(cancel)
+      }
+    }
+
     try {
       this.retryCountCheckpoint = this.retryCount
       this.dispatch(this.opts, this)
@@ -19315,6 +19708,15 @@ class RetryHandler {
   }
 
   #onAbort (reason) {
+    // A retry that waits for a connection is taken out of its queue: its
+    // dispatcher fails it with an aborted controller, so onResponseError passes
+    // the abort on instead of retrying. Once the retry started, this does nothing.
+    const cancel = this.#queuedCancel
+    if (cancel !== null) {
+      this.#queuedCancel = null
+      cancel(reason ?? new RequestAbortedError())
+    }
+
     // A consumer abort lands on the controller proxy. If the retry policy is
     // still deciding (typically holding a backoff timer), cancel the wait and
     // surface the abort immediately instead of letting the request hang until
@@ -19404,7 +19806,9 @@ const {
   isEtagUsable
 } = __nccwpck_require__(7659)
 const { AbortError } = __nccwpck_require__(8707)
+const { kQueuedAbort } = __nccwpck_require__(6443)
 const { parseHttpDate } = __nccwpck_require__(5453)
+const { kInterceptorKind } = __nccwpck_require__(6443)
 
 /**
  * @param {(string | RegExp)[] | undefined} origins
@@ -19927,7 +20331,10 @@ function handleResult (
         dispatch(
           {
             ...opts,
-            headers
+            headers,
+            // The revalidation is not the caller's request: aborting the
+            // caller must not cancel it while it waits for a connection.
+            [kQueuedAbort]: undefined
           },
           new CacheHandler(globalOpts, cacheKey, {
             // Silent handler that just updates the cache
@@ -20051,7 +20458,7 @@ module.exports = (opts = {}) => {
     }
   }
 
-  return (dispatch, interceptorOrigin) => {
+  const interceptor = (dispatch, interceptorOrigin) => {
     return (opts, handler) => {
       const requestOrigin = getInterceptorOrigin(opts, interceptorOrigin)
       if (!requestOrigin || arrayIncludes(safeMethodsToNotCache, opts.method)) {
@@ -20154,6 +20561,8 @@ module.exports = (opts = {}) => {
       }
     }
   }
+  interceptor[kInterceptorKind] = 'cache'
+  return interceptor
 }
 
 
@@ -20268,8 +20677,6 @@ function createMaxSizeLimiter (maxSize) {
     }
   })
 }
-
-let warningEmitted = /** @type {boolean} */ (false)
 
 /**
  * @typedef {Object} DecompressHandlerOptions
@@ -20714,15 +21121,6 @@ class DecompressHandler extends DecoratorHandler {
  * @returns {Function} - Interceptor function
  */
 function createDecompressInterceptor (options = {}) {
-  // Emit experimental warning only once
-  if (!warningEmitted) {
-    process.emitWarning(
-      'DecompressInterceptor is experimental and subject to change',
-      'ExperimentalWarning'
-    )
-    warningEmitted = true
-  }
-
   return (dispatch) => {
     return (opts, handler) => {
       if (opts.method === 'HEAD') {
@@ -20749,6 +21147,7 @@ const diagnosticsChannel = __nccwpck_require__(3053)
 const util = __nccwpck_require__(3440)
 const DeduplicationHandler = __nccwpck_require__(3599)
 const { getInterceptorOrigin, normalizeHeaders, makeCacheKey, makeDeduplicationKey } = __nccwpck_require__(7659)
+const { kInterceptorKind } = __nccwpck_require__(6443)
 
 const pendingRequestsChannel = diagnosticsChannel.channel('undici:request:pending-requests')
 
@@ -20802,7 +21201,7 @@ module.exports = (opts = {}) => {
    */
   const pendingRequests = new Map()
 
-  return (dispatch, interceptorOrigin) => {
+  const interceptor = (dispatch, interceptorOrigin) => {
     return (opts, handler) => {
       const requestOrigin = getInterceptorOrigin(opts, interceptorOrigin)
       if (!requestOrigin || opts.upgrade || methods.includes(opts.method) === false) {
@@ -20860,6 +21259,8 @@ module.exports = (opts = {}) => {
       return dispatch(opts, deduplicationHandler)
     }
   }
+  interceptor[kInterceptorKind] = 'deduplicate'
+  return interceptor
 }
 
 
@@ -21577,9 +21978,10 @@ module.exports = createDumpInterceptor
 
 
 const RedirectHandler = __nccwpck_require__(8754)
+const { kInterceptorKind } = __nccwpck_require__(6443)
 
 function createRedirectInterceptor ({ maxRedirections: defaultMaxRedirections, throwOnMaxRedirect: defaultThrowOnMaxRedirect, stripHeadersOnRedirect: defaultStripHeadersOnRedirect, stripHeadersOnCrossOriginRedirect: defaultStripHeadersOnCrossOriginRedirect } = {}) {
-  return (dispatch) => {
+  const interceptor = (dispatch) => {
     return function Intercept (opts, handler) {
       const { maxRedirections = defaultMaxRedirections, throwOnMaxRedirect = defaultThrowOnMaxRedirect, stripHeadersOnRedirect = defaultStripHeadersOnRedirect, stripHeadersOnCrossOriginRedirect = defaultStripHeadersOnCrossOriginRedirect, ...rest } = opts
 
@@ -21592,6 +21994,8 @@ function createRedirectInterceptor ({ maxRedirections: defaultMaxRedirections, t
       return dispatch(dispatchOpts, redirectHandler)
     }
   }
+  interceptor[kInterceptorKind] = 'redirect'
+  return interceptor
 }
 
 module.exports = createRedirectInterceptor
@@ -27985,7 +28389,7 @@ function isInvalidOrWildcardVaryHeader (varyHeader) {
 
 /**
  * Note: this deviates from the spec a little. Empty etags ("", W/"") are valid,
- *  however, including them in cached resposnes serves little to no purpose.
+ *  however, including them in cached responses serves little to no purpose.
  *
  * @see https://www.rfc-editor.org/rfc/rfc9110.html#name-etag
  *
@@ -29116,7 +29520,7 @@ function refreshTimeout () {
   // method (e.g. mocked timers in tests).
   if (fastNowTimeout?.refresh) {
     fastNowTimeout.refresh()
-    // fastNowTimeout is not instantiated yet or refresh is not availabe,
+    // fastNowTimeout is not instantiated yet or refresh is not available,
     // create a new Timer.
   } else {
     clearTimeout(fastNowTimeout)
@@ -34687,19 +35091,12 @@ class FormData {
   }
 
   [nodeUtil.inspect.custom] (depth, options) {
-    const state = this.#state.reduce((a, b) => {
-      if (a[b.name]) {
-        if (Array.isArray(a[b.name])) {
-          a[b.name].push(b.value)
-        } else {
-          a[b.name] = [a[b.name], b.value]
-        }
-      } else {
-        a[b.name] = b.value
-      }
-
-      return a
-    }, { __proto__: null })
+    const state = Object.groupBy(this.#state, ({ name }) => name)
+    for (const [name, entries] of Object.entries(state)) {
+      state[name] = entries.length === 1
+        ? entries[0].value
+        : entries.map(({ value }) => value)
+    }
 
     options.depth ??= depth
     options.colors ??= true
@@ -35638,7 +36035,7 @@ const {
 const EE = __nccwpck_require__(8474)
 const { Readable, pipeline, finished, isErrored, isReadable } = __nccwpck_require__(7075)
 const { addAbortListener, bufferToLowerCasedHeaderName } = __nccwpck_require__(3440)
-const { SocketError } = __nccwpck_require__(8707)
+const { SocketError, InformationalError } = __nccwpck_require__(8707)
 const { dataURLProcessor, serializeAMimeType, minimizeSupportedMimeType } = __nccwpck_require__(1900)
 const { getGlobalDispatcher } = __nccwpck_require__(2581)
 const { webidl } = __nccwpck_require__(7879)
@@ -37912,6 +38309,10 @@ async function httpNetworkFetch (
               }
             }
 
+            // The response will be exposed without a body, so any content the
+            // server sends is disregarded (see main fetch step 19).
+            this.nullBodyStatus = nullBodyStatus.includes(status)
+
             this.body = new Readable({ read: () => controller.resume() })
 
             const onError = (err) => this.onResponseError(controller, err)
@@ -37931,6 +38332,14 @@ async function httpNetworkFetch (
           },
 
           onResponseData (controller, chunk) {
+            if (this.nullBodyStatus) {
+              // The server sent content in a response that must not have any.
+              // Nobody can read it, so close the connection instead of waiting
+              // for the server to finish sending it.
+              controller.abort(new InformationalError('response with null body status has content'))
+              return
+            }
+
             if (fetchParams.controller.dump) {
               return
             }
@@ -37968,6 +38377,13 @@ async function httpNetworkFetch (
           onResponseError (controller, error) {
             if (this.abort) {
               fetchParams.controller.off('terminated', this.abort)
+            }
+
+            if (this.nullBodyStatus) {
+              // The response has no body, so a failure while receiving the
+              // disregarded content must not turn it into a network error.
+              this.body?.destroy()
+              return
             }
 
             if (
@@ -40366,7 +40782,7 @@ function stripURLForReferrer (url, originOnly = false) {
   return url
 }
 
-const isPotentialleTrustworthyIPv4 = RegExp.prototype.test
+const isPotentiallyTrustworthyIPv4 = RegExp.prototype.test
   .bind(/^127\.(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)\.){2}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)$/)
 
 const isPotentiallyTrustworthyIPv6 = RegExp.prototype.test
@@ -40389,7 +40805,7 @@ function isOriginIPPotentiallyTrustworthy (origin) {
   }
 
   // IPv4
-  return isPotentialleTrustworthyIPv4(origin)
+  return isPotentiallyTrustworthyIPv4(origin)
 }
 
 /**
